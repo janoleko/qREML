@@ -84,7 +84,7 @@ BIC4 = 2 * mod_simple4$minimum + log(nrow(data)) * length(mod_simple4$estimate)
 
 # Visualising both simple models together ---------------------------------
 
-pdf("./case_studies/figs/caracaras_simple.pdf", width = 8.5, height = 4)
+# pdf("./case_studies/figs/caracaras_simple.pdf", width = 8.5, height = 4)
 
 par(mfrow = c(1,2))
 
@@ -113,9 +113,9 @@ curve(delta4[1] * dnorm(x, mu4[1], sigma4[1]) +
 legend("topright", legend = c("resting 1", "resting 2", "low activity", "high activity"), 
        col = color2, lwd = 2, bty = "n")
 
-dev.off()
+# dev.off()
 
-## corresponding lognormal distributions
+## corresponding lognormal distributions - for better comparison to original paper
 par(mfrow = c(1,1))
 color2 = c("#FFEF00", "orange", "deepskyblue", "seagreen4")
 hist(data$VDBA, breaks = 150, prob = T, bor = "white", main = "", xlab = "log(VeDBA)", ylab = "density", xlim = c(0, 0.2), ylim = c(0,30))
@@ -205,6 +205,7 @@ legend("topright", legend = c("resting", "low activity", "high activity"),
        col = color, lwd = 2, bty = "n")
 
 
+###########################################################################
 # Non-parametric model ----------------------------------------------------
 
 # likelihood function
@@ -260,27 +261,27 @@ build_desmat = function(x, K, ord = 4){
 K = 25
 ord = 4
 degree = ord-1
-
 desmat = build_desmat(data$logVDBA, K = K, ord = ord)
 B = desmat$B
 knots = desmat$knots
 w = desmat$w
 
-# buiilding the penalty matrix
+# building the penalty matrix (penalizing squared second order differences)
 L = WH:::build_D_mat(K+1, 2)
 S = t(L[,-1])%*%L[,-1]
 m = nrow(S) - as.numeric(Matrix::rankMatrix(S)) # rank deficiency (for correction)
 
 # initial values for spline coefficients (from simple model)
+N = 3
 b.pos = knots[(degree+1):(length(knots)-degree+1)]
-b0 = log(cbind(dnorm(b.pos, mu[1], sigma[1] * 1.5), # initially more overlap
-               dnorm(b.pos, mu[2], sigma[2] * 1.5),
-               dnorm(b.pos, mu[3], sigma[3] * 1.5)))
+b0 = log(cbind(dnorm(b.pos, mu3[1], sigma3[1] * 1.3), # initially more overlap
+               dnorm(b.pos, mu3[2], sigma3[2] * 1.3),
+               dnorm(b.pos, mu3[3], sigma3[3] * 1.3)))
 b0 = b0 - matrix(apply(b0, 2, min), nrow = length(b.pos), ncol = N, byrow = TRUE)
 
 # initial parameter vector
 # theta.star = c(mod_simple$estimate[1:(N*(N-1))], as.numeric(b0))
-theta.star = c(rep(-4, N*(N-1)), as.numeric(b0))
+theta.star = c(rep(-3, N*(N-1)), as.numeric(b0))
 
 
 
@@ -368,7 +369,7 @@ round(AICBIC,1)
 # decoding states
 allprobs = matrix(1, nrow = length(data$logVDBA), ncol = N)
 ind = which(!is.na(data$logVDBA))
-for (j in 1:N) allprobs[ind, j] = B[ind,] %*% A[j,]
+allprobs[ind,] = B[ind,] %*% t(A)
 
 states = LaMa::viterbi(delta, Gamma, allprobs)
 
@@ -376,7 +377,7 @@ states = LaMa::viterbi(delta, Gamma, allprobs)
 plotseq = seq(min(data$logVDBA, na.rm=T), max(data$logVDBA, na.rm=T), length = 500)
 Bplot = splines::spline.des(knots, plotseq, degree+1, outer.ok=T)$design * w[1]
 
-pdf("./case_studies/figs/caracara.pdf", width = 8.5, height = 4)
+# pdf("./case_studies/figs/caracara.pdf", width = 8.5, height = 4)
 
 par(mfrow = c(1,2), mar = c(5,4,3.5,1)+0.1)
 hist(data$logVDBA, prob = T, breaks = 50, bor = "white",
@@ -393,9 +394,9 @@ legend("topright", legend = c("resting", "low activity", "high activity"),
 
 plotind = 4000:6000
 plot(data$VDBA[plotind], type = "h", col = color[states[plotind]], 
-     xlab = "time", ylab = "VeDBA", bty = "n", lwd = 0.5)
+     xlab = "time", ylab = "VeDBA", bty = "n", lwd = 0.3)
 
-dev.off()
+# dev.off()
 
 
 
