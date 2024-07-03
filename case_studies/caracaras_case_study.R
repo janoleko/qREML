@@ -514,3 +514,13 @@ plot(data$logVDBA, pch = 20, col = color[states], xlab = "time", ylab = "log(VeD
 plot(data$VDBA, type = "h", col = color[states4], xlab = "time", ylab = "VeDBA", bty = "n", ylim = c(0, 0.4))
 
 
+
+
+L1 = cbind(diag(5),0)
+diag(L1[,-1]) = -1
+
+L2 = L1[-1,-1] %*% L1
+
+S = t(L2)%*%L2
+
+determinant(S, logarithm = TRUE)

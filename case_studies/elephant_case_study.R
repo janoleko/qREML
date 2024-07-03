@@ -177,6 +177,7 @@ S = gam_prefit$S[[1]]
 maxiter = 50 # maximum number of iterations
 tol = 0.01 # relative tolerance for convergence
 gradtol = 1e-6 # relative gradient tolerance for nlm
+alpha = 1
 
 Lambdas = matrix(NA, maxiter, 2)
 Lambdas[1,] = c(100000, 100000)
@@ -209,7 +210,8 @@ for(k in 1:maxiter){
   for(i in 1:(N*(N-1))){
     edoF = sum(diag(diag(rep(1, nrow(S))) - Lambdas[k, i] * J_inv[REind[i,], REind[i,]] %*% S))
     penalty = t(theta.star[REind[i,]]) %*% S %*% theta.star[REind[i,]]
-    Lambdas[k+1, i] = as.numeric(edoF / penalty) # no -1 because D_cyclic has full rank
+    lambda_new = as.numeric(edoF / penalty) # no -1 because D_cyclic has full rank
+    Lambdas[k+1, i] = alpha * lambda_new + (1-alpha) * Lambdas[k, i]
   }
   
   cat("\nSmoothing strengths:", round(Lambdas[k+1,], 4))
