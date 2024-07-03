@@ -116,7 +116,7 @@ mllk = function(theta.star, X, Z, S, lambda, trackInd) {
   
   Beta = matrix(0, nrow = ncol(Z), ncol = N*(N-1))
   Beta[1, -c(2,5)] = beta0
-  Beta[1, c(2,5)] = -(10^2)
+  Beta[1, c(2,5)] = -(10^3)
   Beta[2:(n_re+1), -c(2,5)] = beta_re
   Beta[(n_re+2):nrow(Beta), -c(2,5)] = beta_sm
   
@@ -157,11 +157,13 @@ trackInd = calc_trackInd(as.character(data$ID))
 
 
 ### Optimisation
+N=3
 
 # hyperparameters for outer maximization
 maxiter = 100 # maximum number of iterations
 tol = 0.01 # relative tolerance for convergence
 gradtol = 1e-6 # relative gradient tolerance for nlm
+alpha = 0.9 # exponential smoothing parameter for penalty strengths
 
 Lambdas = matrix(NA, maxiter, 8)
 Lambdas[1,] = c(rep(200, 4), rep(20000, 4))
@@ -205,7 +207,8 @@ for(k in 1:maxiter){
     } else{ S_i = S[[2]] }
     edoF = sum(diag(diag(rep(1, nrow(S_i))) - Lambdas[k, i] * J_inv[REind[[i]], REind[[i]]] %*% S_i))
     penalty = t(theta.star[REind[[i]]]) %*% S_i %*% theta.star[REind[[i]]]
-    Lambdas[k+1, i] = as.numeric(edoF / penalty)
+    lambda_new = as.numeric(edoF / penalty)
+    Lambdas[k+1, i] = alpha * lambda_new + (1 - alpha) * Lambdas[k, i]
   }
   Lambdas[k+1, which(Lambdas[k+1] < 0)] = 0 # ensures that the penalty strengths are non-negative
   
