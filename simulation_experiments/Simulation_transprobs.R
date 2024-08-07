@@ -80,7 +80,7 @@ fitMML = function(x, Z, S, theta0, mllk, REind = matrix(5 + 1:(2*ncol(Z)), nrow 
       
     # updating all penalty strengths state-dependent process
     for(i in 1:2){
-      edoF = sum(diag(diag(rep(1, nrow(S))) - Lambdas[k, i] * J_inv[REind[i,], REind[i,]] %*% S))
+      edoF = sum(diag(diag(nrow(S)) - Lambdas[k, i] * J_inv[REind[i,], REind[i,]] %*% S))
       penalty = t(theta.star[REind[i,]]) %*% S %*% theta.star[REind[i,]]
       Lambdas[k+1, i] = as.numeric((edoF-1) / penalty)
     }
