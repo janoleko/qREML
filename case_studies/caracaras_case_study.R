@@ -315,7 +315,7 @@ for(k in 1:maxiter){
   
   # updating all penalty strengths
   for(i in 1:N){
-    edoF = sum(diag(diag(rep(1, nrow(S))) - Lambdas[k, i] * J_inv[REind[i,], REind[i,]] %*% S))
+    edoF = sum(diag(diag(nrow(S)) - Lambdas[k, i] * J_inv[REind[i,], REind[i,]] %*% S))
     penalty = t(theta.star[REind[i,]]) %*% S %*% theta.star[REind[i,]]
     Lambdas[k+1, i] = as.numeric((edoF - m) / penalty)
   }

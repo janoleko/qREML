@@ -177,10 +177,10 @@ S = gam_prefit$S[[1]]
 maxiter = 50 # maximum number of iterations
 tol = 0.01 # relative tolerance for convergence
 gradtol = 1e-6 # relative gradient tolerance for nlm
-alpha = 1
+alpha = 0.99
 
 Lambdas = matrix(NA, maxiter, 2)
-Lambdas[1,] = c(100000, 100000)
+Lambdas[1,] = c(1e6, 1e6)
 mods = list()
 
 # defining the indices of the spline coefficients
@@ -208,10 +208,10 @@ for(k in 1:maxiter){
   
   # updating all penalty strengths state-dependent process
   for(i in 1:(N*(N-1))){
-    edoF = sum(diag(diag(rep(1, nrow(S))) - Lambdas[k, i] * J_inv[REind[i,], REind[i,]] %*% S))
+    edoF = sum(diag(diag(nrow(S)) - Lambdas[k, i] * J_inv[REind[i,], REind[i,]] %*% S))
     penalty = t(theta.star[REind[i,]]) %*% S %*% theta.star[REind[i,]]
     lambda_new = as.numeric(edoF / penalty) # no -1 because D_cyclic has full rank
-    Lambdas[k+1, i] = alpha * lambda_new + (1-alpha) * Lambdas[k, i]
+    Lambdas[k+1, i] = alpha * lambda_new + (1-alpha) * Lambdas[k, i] # exponential smoothing
   }
   
   cat("\nSmoothing strengths:", round(Lambdas[k+1,], 4))
@@ -375,7 +375,7 @@ axis(1, at = seq(0, 24, by = 4), labels = seq(0, 24, by = 4))
 
 # Plotting the model sequence ---------------------------------------------
 
-itershow = c(1,2,3,5,10,15)
+itershow = c(1,2,3,4,5,12)
 # tod_seq = seq(0,24, length = 300)
 
 # pdf("./case_studies/figs/elephant_model_sequence.pdf", width = 7.5, height = 5)
@@ -400,71 +400,3 @@ for(m in itershow){
 }
 
 # dev.off()
-
-
-# pdf("./case_studies/figs/elephant_model_sequence.pdf", width = 7.5, height = 5)
-# par(mfrow = c(2,3))
-# for(m in itershow){
-#   theta.star = mods[[m]]$estimate
-#   N = 2; p = 3*N
-#   beta = matrix(theta.star[p + 1:(ncol(Z)*N*(N-1))], nrow = ncol(Z), ncol = N*(N-1))
-# 
-#   Delta_cont = matrix(NA, length(tod_seq), 2)
-#   for(t in 1:length(tod_seq)){
-#     t_seq = (tod_seq[t] + (1:12)*2 - 1) %% 24
-#     Z_cont = mgcv::gam(y ~ s(tod, bs = "cp", k = nb), 
-#                        data = data.frame(dummy = 1, tod = t_seq, y = 1), 
-#                        knots = list(tod = knots), fit = FALSE)$X
-#     G = LaMa::tpm_g(Z_cont[,-1], t(beta))
-#     Delta_cont[t,] = LaMa::stationary_p(G, t = 1)
-#   }
-#   plot(tod_seq, Delta_cont[,2], type = "l", lwd = 2, col = "deepskyblue", main = paste("Iteration", m),
-#        bty = "n", ylim = c(0,1), xlab = "time of day", ylab = "Pr(exploratory)", xaxt = "n")
-#   axis(1, at = seq(0,24,by=4), labels = seq(0,24,by=4))
-# }
-# 
-# dev.off()
-
-
-# ## model with cyclic P-splines
-# 
-# mllk = function(theta.star, X, N=2, Z, lambda, D){
-#   mu = exp(theta.star[1:N])
-#   sigma = exp(theta.star[N + 1:N])
-#   kappa = exp(theta.star[2*N + 1:N]); p = 3*N
-#   beta0 = theta.star[p + 1:(N*(N-1))]; p = p + N*(N-1)
-#   nb = ncol(Z)
-#   b = theta.star[p + 1:(N*(N-1)*(nb-1))]
-#   beta = matrix(0, nrow = N*(N-1), ncol = nb+1)
-#   beta[,1] = beta0
-#   beta[,3:(nb+1)] = matrix(b, nrow = N*(N-1), ncol = nb-1, byrow = TRUE)
-#   
-#   Gamma = LaMa::tpm_g(Z, beta)
-#   delta = LaMa::stationary_p(Gamma, t = X$tod[1])
-#   
-#   allprobs = matrix(1, nrow = nrow(X), ncol = N)
-#   ind = which(!is.na(X$step) & !is.na(X$angle))
-#   for(j in 1:N){
-#     allprobs[ind,j] = dgamma(X$step[ind],shape=mu[j]^2/sigma[j]^2,scale=sigma[j]^2/mu[j])*
-#       CircStats::dvm(X$angle[ind], mu = 0, kappa = kappa[j])
-#   }
-#   
-#   pen = t(b) %*% kronecker(diag(lambda), D) %*% b
-#   
-#   -LaMa::forward_g(delta, Gamma[,,X$tod], allprobs) + 0.5 * pen
-# }
-# 
-# # Marginal ML -------------------------------------------------------------
-# 
-# # defining the state process design matrix
-# nb = 15 # number of basis functions
-# knots = 24 * 0:nb / nb # knots
-# Z = mgcv::cSplineDes(2*(1:12)-1, knots) ## cyclic spline design matrix
-# 
-# # defining the penalty matrix (additional rows because cyclic)
-# L_bar = WH:::build_D_mat(nb, 2)
-# L = matrix(0, nb, nb)
-# L[1:(nb-2),1:(nb)] = L_bar
-# L[nb-1, 1] = 1; L[nb-1, (nb-1):(nb)] = c(1, -2)
-# L[nb,1:2] = c(-2, 1); L[nb, nb] = 1
-# D = t(L[,-1])%*%L[,-1] # difference penalty matrix
