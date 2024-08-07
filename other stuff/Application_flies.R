@@ -82,13 +82,13 @@ mllk_flies = function(theta.star, X, N=2, Z, lambda, S, trackInd){
   -LaMa::forward_g(delta, Gamma_track, allprobs, trackInd) + 0.5 * pen # 0.5 is important!
 }
 
-nb = 12 # number of basis functions
+nb = 10 # number of basis functions
 knots = seq(0, 24, length.out = nb+2) 
 # fixing equidistant knots as mgcv otherwise selects them data driven (which is annoying when predicting later)
 tod = sort(unique(data$tod)) / 2 # unique time points
 # building desing and penalty matrix with mgcv
-gam_pre = mgcv::gam(y ~ s(tod, bs = "cp", k = nb+1), 
-                       data = data.frame(dummy = 1, tod = tod, y = 1), 
+gam_pre = mgcv::gam(dummy ~ s(tod, bs = "cp", k = nb+1), 
+                       data = data.frame(dummy = 1, tod = tod), 
                        knots = list(tod = knots), fit = FALSE)
 Z = gam_pre$X
 S = gam_pre$S[[1]]
@@ -207,7 +207,15 @@ plot(todseq, Delta[,2], type = "l", lwd = 2, col = color[2], ylim = c(0,1),
      bty = "n", xlab = "time of day", ylab = "Pr(active)", xaxt = "n")
 axis(1, at = seq(0, 24, by = 4), labels = seq(0, 24, by = 4))
 
+Z_plot = gam_pre = mgcv::gam(y ~ s(tod, bs = "cp", k = nb+1), 
+                    data = data.frame(dummy = 1, tod = seq(0,24,length=300), y = 1), 
+                    knots = list(tod = knots), fit = FALSE)$X
+Gamma_plot = LaMa::tpm_g(Z_plot[,-1], beta[,,1])
 
+par(mfrow = c(2,2))
+for(i in 1:2){for(j in 1:2){
+  plot(seq(0,24,length=300), Gamma_plot[i,j,], type = "l", lwd = 2, ylim = c(0,1))
+}}
 
 
 # Adding a random intercept -----------------------------------------------
