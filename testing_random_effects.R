@@ -61,9 +61,9 @@ fixpar <- list(obs = c("angle.mu.state1.(Intercept)" = NA,
 hmm <- HMM$new(obs = obs, hid = hid, fixpar = fixpar)
 
 # Fitting the model
-t1 = Sys.time()
-hmm$fit()
-Sys.time()-t1
+system.time(
+  hmm$fit()
+)
 
 # Summary of the model
 hmm$plot_ts("lon", "lat") +
@@ -96,242 +96,114 @@ hmm$plot(what = "delta", var = "ID", covs = list(d2c = 1500))
 
 # Using my own code and MMLE ----------------------------------------------
 
+## packages
 library(LaMa)
+library(RTMB)
 
-mllk = function(theta.star, X, Z, S, lambda, trackInd) {
-  N=3
-  mu = exp(theta.star[1:N])
-  sigma = exp(theta.star[N + 1:N])
-  kappa = exp(theta.star[2*N + 1:N])
-  p = 3*N
+## data
+data = read.csv("./data/petrels.csv")
+data = data[,-(5:6)]
+data$ID = as.factor(data$ID)
+
+## penalized likelihood
+pnll = function(par){
+  getAll(par, dat)
   
-  # Transition probabilities
-  n_re = nrow(S[[1]])
-  nb = nrow(S[[2]])
+  mu = exp(logmu); REPORT(mu)
+  sigma = exp(logsigma); REPORT(sigma)
+  kappa = exp(logkappa); REPORT(kappa)
   
-  # coefficients
-  beta0 = matrix(theta.star[p + 1:4])
-  beta_re = matrix(theta.star[p + 4 + 1:(n_re*4)], ncol = 4)
-  beta_sm = matrix(theta.star[p + 4 + n_re*4 + 1:(nb*4)], ncol = 4)
+  beta = matrix(0, 6, ncol(Z))
+  beta[c(2,5), 1] = -1e3
+  beta[-c(2,5),] = cbind(beta0, betaRe, betaSpline)
   
-  Beta = matrix(0, nrow = ncol(Z), ncol = N*(N-1))
-  Beta[1, -c(2,5)] = beta0
-  Beta[1, c(2,5)] = -(10^3)
-  Beta[2:(n_re+1), -c(2,5)] = beta_re
-  Beta[(n_re+2):nrow(Beta), -c(2,5)] = beta_sm
+  Gamma = tpm_g(Z, beta, ad = T, byrow = T)
   
-  Gamma = LaMa::tpm_g(Z[,-1], t(Beta))
+  uIDs = unique(ID)
+  Delta = matrix(NaN, length(uIDs), 3)
+  for(i in 1:length(uIDs)) Delta[i,] = stationary(Gamma[,,which(ID == uIDs[i])[1]])
+
+  allprobs = matrix(1, length(step), 3)
+  ind = which(!is.na(step) & !is.na(angle))
+  for(j in 1:3) allprobs[ind,j] = dgamma2(step[ind], mu[j], sigma[j]) * dvm(angle[ind], 0, kappa[j])
   
-  # Initial distribution
-  Delta = matrix(NA, n_re, N)
-  for(i in 1:n_re){
-    Delta[i,] = LaMa::stationary(Gamma[,,trackInd[i]])
-  }
-  
-  # Observation probabilities
-  allprobs = matrix(1, nrow = nrow(X), ncol = N)
-  ind = which(!is.na(X$step) & !is.na(X$angle))
-  for(j in 1:N){
-    allprobs[ind, j] = dgamma(X$step[ind],shape=mu[j]^2/sigma[j]^2,scale=sigma[j]^2/mu[j]) * 
-      CircStats::dvm(X$angle[ind], 0, kappa[j])
-  }
-  
-  pen = t(as.numeric(beta_re)) %*% kronecker(diag(lambda[1:4]), S[[1]]) %*% as.numeric(beta_re) + 
-    t(as.numeric(beta_sm)) %*% kronecker(diag(lambda[5:8]), S[[2]]) %*% as.numeric(beta_sm)
-  
-  - LaMa::forward_g(Delta, Gamma, allprobs, trackInd = trackInd) + 0.5 * pen
+  -forward_g(Delta, Gamma, allprobs, trackID = ID, ad = T) + 
+    penalty(list(betaRe, betaSpline), S, lambda)
 }
 
-# Design and penalty matrix
-gam_pre = mgcv::gam(y ~ s(ID, bs = 're') + s(d2c, k = 10, bs = 'cs'), 
-                    data = data.frame(dummy = 1, ID = data$ID, d2c = data$d2c, y = 1), fit = FALSE)
-Z = gam_pre$X
-S = gam_pre$S
+## model matrices
+k = 10
+modmat = make_matrices( ~s(ID, bs = 're') + s(d2c, k = k, bs = 'cs'), data = data)
+Z = modmat$Z
+S = modmat$S
 
-m = nrow(S[[2]]) - Matrix::rankMatrix(S[[2]])
-# S has full rank
+## initial parameter
+nAnimals = length(unique(data$ID))
+par = list(logmu = log(c(1, 6, 20)),
+           logsigma = log(c(1, 5, 10)),
+           logkappa = log(c(0.8, 0.8, 0.9)),
+           beta0 = rep(-2,4),
+           betaRe = matrix(0, 4, nAnimals),
+           betaSpline = matrix(0, 4, k-1))
 
+dat = list(step = data$step, angle = data$angle, ID = data$ID,
+           Z = Z, S = S, lambda = c(rep(1e2, 4), rep(1e3, 4)), alpha = 0.1)
 
-# trackInd for independent tracks
-trackInd = calc_trackInd(as.character(data$ID))
-
-
-### Optimisation
-N=3
-
-# hyperparameters for outer maximization
-maxiter = 100 # maximum number of iterations
-tol = 0.01 # relative tolerance for convergence
-gradtol = 1e-6 # relative gradient tolerance for nlm
-alpha = 0.9 # exponential smoothing parameter for penalty strengths
-
-Lambdas = matrix(NA, maxiter, 8)
-Lambdas[1,] = c(rep(200, 4), rep(20000, 4))
-mods = list()
-
-# defining the indices of the spline coefficients
-REind = c(
-  as.list(data.frame(t(matrix(3*N + 4 + 1:(nrow(S[[1]])*4), nrow = 4, byrow = TRUE)))),
-  as.list(data.frame(t(matrix(3*N + 4 + nrow(S[[1]])*4 + 1:(nrow(S[[2]])*4), nrow = 4, byrow = TRUE))))
+system.time(
+  mod <- pql(pnll, par, dat, random = c("betaRe", "betaSpline"),
+             alpha = 0.2, inner_tol = 1e-10, tol = 1e-6)
 )
 
-# Initial values
-theta.star = c(
-  log(step_mean0), log(step_sd0), log(angle_rho0), # observation parameters
-  rep(-2, 4), # beta0
-  rep(0, 4 * nrow(S[[1]])), # beta_re
-  rep(0, 4 * nrow(S[[2]])) # beta_sm
-)
+# extracting parameters
+mu = mod$mu
+sigma = mod$sigma
+kappa = mod$kappa
+beta = mod$beta
+Delta = mod$delta
 
-
-# algorithm
-T1 = Sys.time()
-for(k in 1:maxiter){
-  cat("\n\n- Iteration", k, "-")
-  if(k == 1){
-    print.level = 2
-  } else print.level = 0
-  
-  t1 = Sys.time()
-  mods[[k]] = nlm(mllk, theta.star, X = data, Z = Z, S = S, lambda = Lambdas[k,], trackInd = trackInd,
-                  iterlim = 2000, print.level = print.level, gradtol = gradtol, hessian = TRUE, stepmax = 100)
-  Sys.time()-t1; cat("\nEstimation time:", Sys.time()-t1); cat("\nIterations:", mods[[k]]$iterations)
-  
-  theta.star = mods[[k]]$estimate # saves theta.star as starting value for next iteration
-  J_inv = MASS::ginv(mods[[k]]$hessian) # inverse penalized hessian
-  
-  # updating all penalty strengths state-dependent process
-  for(i in 1:8){
-    if(i %in% 1:4){
-      S_i = S[[1]]
-    } else{ S_i = S[[2]] }
-    edoF = sum(diag(diag(rep(1, nrow(S_i))) - Lambdas[k, i] * J_inv[REind[[i]], REind[[i]]] %*% S_i))
-    penalty = t(theta.star[REind[[i]]]) %*% S_i %*% theta.star[REind[[i]]]
-    lambda_new = as.numeric(edoF / penalty)
-    Lambdas[k+1, i] = alpha * lambda_new + (1 - alpha) * Lambdas[k, i]
-  }
-  Lambdas[k+1, which(Lambdas[k+1] < 0)] = 0 # ensures that the penalty strengths are non-negative
-  
-  cat("\nSmoothing strengths:", round(Lambdas[k+1,], 4))
-  if(mean(abs(Lambdas[k+1,] - Lambdas[k,]) / Lambdas[k,]) < tol){
-    # cat("\n\n- Final model fit")
-    # t1 = Sys.time()
-    # mods[[k+1]] = nlm(mllk_mgcv, theta.star, X = data, N = 2, Z = Z, lambda = Lambdas[k+1,], S = S,
-    #                   iterlim = 1000, print.level = print.level, hessian = TRUE, stepmax = 1000)
-    # Sys.time()-t1; cat("\nEstimation time:", Sys.time()-t1); cat("\nIterations:", mods[[k+1]]$iterations)
-    # 
-    # cat("\n\n")
-    break
-  }
-}
-cat("\nTotal estimation time:", Sys.time()-T1, "\n")
-
-# Trace plots of lambdas
-Lambdas = as.matrix(na.omit(Lambdas))
-par(mfrow = c(2,4))
-for(i in 1:ncol(Lambdas)){
-  plot(Lambdas[,i], type = "l", lwd = 2, main = paste("lambda", i))
-}
-lambda_hat = Lambdas[nrow(Lambdas),]             
-
-sqrt(1 / lambda_hat[1:4])          
-
-
-# Extracting the results
-N=3
-mu = exp(theta.star[1:N])
-sigma = exp(theta.star[N + 1:N])
-kappa = exp(theta.star[2*N + 1:N])
-p = 3*N
-
-# Transition probabilities
-n_re = nrow(S[[1]])
-nb = nrow(S[[2]])
-
-# coefficients
-beta0 = matrix(theta.star[p + 1:4])
-beta_re = matrix(theta.star[p + 4 + 1:(n_re*4)], ncol = 4)
-beta_sm = matrix(theta.star[p + 4 + n_re*4 + 1:(nb*4)], ncol = 4)
-
-Beta = matrix(0, nrow = ncol(Z), ncol = N*(N-1))
-Beta[1, -c(2,5)] = beta0
-Beta[1, c(2,5)] = -(10^2)
-Beta[2:(n_re+1), -c(2,5)] = beta_re
-Beta[(n_re+2):nrow(Beta), -c(2,5)] = beta_sm
-
-Gamma = LaMa::tpm_g(Z[,-1], t(Beta))   
-
-# Initial distribution
-Delta = matrix(NA, n_re, N)
-for(i in 1:n_re){
-  Delta[i,] = LaMa::stationary(Gamma[,,trackInd[i]])
-}
-delta = colMeans(Delta)
-
-# Observation probabilities
-allprobs = matrix(1, nrow = nrow(data), ncol = N)
-ind = which(!is.na(data$step) & !is.na(data$angle))
-for(j in 1:N){
-  allprobs[ind, j] = dgamma(data$step[ind],shape=mu[j]^2/sigma[j]^2,scale=sigma[j]^2/mu[j]) * 
-    CircStats::dvm(data$angle[ind], 0, kappa[j])
-}
+# RE standard deviations
+sds = 1/sqrt(mod$lambda[1:4])
+names(sds) = paste0("beta", c("12", "21", "23", "32"))
+sds
 
 # decoding states
-states = c()
-for(i in 1:n_re){
-  ind_i = which(data$ID == unique(data$ID)[i])
-  states = c(states, LaMa::viterbi(Delta[i,], Gamma[,,ind_i[-1]], allprobs[ind_i,]))
-}
-
+states = viterbi_g(Delta, mod$Gamma, mod$allprobs, mod$trackID)
 # state frequencies
-delta_bar = prop.table(table(states))
+delta = prop.table(table(states))
 
 
 # Visualize state-dependent distributions
 color = c("orange", "deepskyblue", "seagreen2")
 
 par(mfrow = c(1,2))
-hist(data$step, prob = TRUE, bor = "white", xlim = c(0, 40), breaks = 250)
-curve(delta_bar[1]*dgamma(x, shape = mu[1]^2/sigma[1]^2, scale = sigma[1]^2/mu[1]), add = TRUE, col = color[1], lwd = 2)
-curve(delta_bar[2]*dgamma(x, shape = mu[2]^2/sigma[2]^2, scale = sigma[2]^2/mu[2]), add = TRUE, col = color[2], lwd = 2)
-curve(delta_bar[3]*dgamma(x, shape = mu[3]^2/sigma[3]^2, scale = sigma[3]^2/mu[3]), add = TRUE, col = color[3], lwd = 2)
+hist(data$step, prob = TRUE, bor = "white", xlim = c(0, 40), breaks = 250, xlab = "step", main = "")
+for(j in 1:3) curve(delta[j] * dgamma2(x, mu[j], sigma[j]), add = TRUE, col = color[j], lwd = 2)
 
-hist(data$angle, prob = TRUE, bor = "white", ylim = c(0, 1.5), breaks = 30)
-curve(delta_bar[1]*CircStats::dvm(x, 0, kappa[1]), add = TRUE, col = color[1], lwd = 2)
-curve(delta_bar[2]*CircStats::dvm(x, 0, kappa[2]), add = TRUE, col = color[2], lwd = 2)
-curve(delta_bar[3]*CircStats::dvm(x, 0, kappa[3]), add = TRUE, col = color[3], lwd = 2)
+hist(data$angle, prob = TRUE, bor = "white", ylim = c(0, 1.5), breaks = 30, xlab = "angle", main = "")
+for(j in 1:3) curve(delta[j] * dvm(x, 0, kappa[j]), add = TRUE, col = color[j], lwd = 2)
+
 
 
 # Visualize d2c
 i = 3; j = 2
-ord = order(data$d2c)
+d2cseq = seq(min(data$d2c), max(data$d2c), length.out = 200)
 
-# xseq = seq(min(data$d2c), max(data$d2c), length.out = 200)
+uIDs = unique(data$ID)
 
-Z_plot = mgcv::gam(y ~ s(ID, bs = 're') + s(d2c, k = 10, bs = 'cs'), 
-                    data = data.frame(dummy = 1, ID = data$ID, d2c = data$d2c, y = 1), fit = FALSE)$X
-
-# Z_plot = mgcv::gam(y ~ s(d2c, k = 10, bs = 'cs'), 
-#                    data = data.frame(dummy = 1, d2c = xseq, y = 1), fit = FALSE)$X
-
-Z_plot = cbind(matrix(0, nrow(data), 10), Z_plot[ord,12:20])
-Gamma_plot = LaMa::tpm_g(Z_plot, t(Beta))  
+Z_pred = pred_matrix(modmat, data.frame(d2c = d2cseq, ID = uIDs[1]))
+Gamma_pred = tpm_g(Z_pred, beta, byrow = T)  
 
 par(mfrow = c(1,1))
-plot(data$d2c[ord], Gamma_plot[i,j,], type = "l", col = "deepskyblue", lwd = 2, ylim = c(0,1), 
+plot(d2cseq, Gamma_pred[i,j,], type = "l", col = "deepskyblue", lwd = 2, ylim = c(0,1), 
      xlab = "distance to centre (km)", ylab = "Pr(3 -> 2)", bty = "n")
 
 
 # Visualizing random effects (for d2c ~ 1500 km)
 
-Z_plot_re = Z_plot[rep(which.min(abs(data$d2c-1500)), 10),]
-Z_plot_re[,1:n_re] = diag(rep(1,n_re))
+Z_pred2 = pred_matrix(modmat, data.frame(d2c = 1500, ID = uIDs))
+GammaID = tpm_g(Z_pred2, beta, byrow = T)
+DeltaRe = t(sapply(1:length(uIDs), function(i) stationary(GammaID[,,i])))
 
-Gamma_re = LaMa::tpm_g(Z_plot_re, t(Beta))
-Delta_re = matrix(NA, n_re, N)
-for(i in 1:n_re) Delta_re[i,] = LaMa::stationary(Gamma_re[,,i])
+plot(NA, xlim = c(0,10), ylim = c(0,1), bty = "n", xlab = "ID", ylab = "Pr(state)")
+for(i in 1:3) points(1:10, DeltaRe[,i], col = color[i], pch = 16)
 
-plot(1:10, Delta_re[,1], ylim = c(0,1), col = color[1], pch = 16, bty = "n",
-     xlab = "ID", ylab = "Pr(state)")
-points(1:10, Delta_re[,2], col = color[2], pch = 16)
-points(1:10, Delta_re[,3], col = color[3], pch = 16)
