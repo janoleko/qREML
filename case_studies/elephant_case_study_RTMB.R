@@ -187,7 +187,6 @@ S = modmat$S
 
 
 # initial parameter values
-
 N = 2 
 par = list(logmu = log(c(0.35, 1.1)),
            logsigma = log(c(0.25, 0.75)),
@@ -353,6 +352,7 @@ sun_cycle_colors <- c(
 
 
 # pdf("./case_studies/figs/elephant_stationary.pdf", width = 7, height = 4.5)
+
 par(mfrow = c(1,1))
 plot(NA, bty = "n", ylim = c(0,1), xlim = c(0,24), ylab = "Pr(exploratory)", xlab = "time of day", xaxt = "n")
 polygon(x = c(0, 6.5, 6.5, 0), y = c(0, 0, 1, 1), col = "gray95", border = "white")
@@ -369,6 +369,7 @@ lines(tod_seq, Delta_cont[,2], lwd = 1.5, col = "black",
 polygon(c(tod_seq, rev(tod_seq)), c(DeltaCI[1,,2], rev(DeltaCI[2,,2])), 
         col = alpha("black", 0.1), border = F)
 axis(1, at = seq(0, 24, by = 4), labels = seq(0, 24, by = 4))
+
 # dev.off()
 
 
@@ -397,7 +398,7 @@ for(m in plotind){
 
 }
 
-# dev.off()
+#dev.off()
 
 
 

@@ -116,12 +116,12 @@ par = list(beta0 = rep(-2, 2),                           # state process interce
 data = list(ODBA = sharks$ODBA, IDnum = sharks$IDnum, trackID = sharks$SharkID, N = 2,
            Z_s = Z_s, Z_sd = Z_sd, 
            S = S,
-           lambda = c(rep(1e3, 2), rep(1e5, + length(IDs))))
+           lambda = c(rep(1e3, 4), rep(1e5, length(IDs))))
 
 ## model fitting
 system.time(
   mod <- pql(pnll, par, data, random = c("betaSpline1", "betaSpline2", "A"),
-             maxiter = 500, silent = 0)
+             maxiter = 500, silent = 1)
 )
 
 

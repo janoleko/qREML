@@ -96,7 +96,7 @@ Delta = array(dim = c(L, 2, 2, nAnimals)) # array for all flies
 IDs = unique(data$ID) # unique IDs
 conds = unique(data$condition) # unique conditions
 
-# estimated stationary distribution for each fly (can take some time)
+# estimated stationary distribution for each fly
 for(cond in 1:2){
   for(a in 1:nAnimals){
     Z_pred = pred_matrix(modmat, 
@@ -291,7 +291,14 @@ phi = mod2$phi
 mu_mean = exp(mod2$par$logmu)
 phi_mean = exp(mod2$par$logphi)
 
-1/sqrt(mod$lambda[1:8])
+## RE distribution
+lambda = mod$lambda
+# sds of random mean
+1 / sqrt(lambda[1:2])
+# sds of random dispersion
+1 / sqrt(lambda[3:4])
+# sds of random intercepts
+matrix(1 / sqrt(lambda[5:8]), nrow = 2)
 
 ## plot all state-dependent distributions
 par(mfrow = c(1,1))

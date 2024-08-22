@@ -68,7 +68,7 @@ dat = list(price = energy$Price, Z = Z, S = S,
 ## model fit
 system.time(
   mod <- pql(pnll, par, dat, random = c("betaspline", "alphaspline"), 
-             silent = 1, saveall = TRUE)
+             saveall = TRUE)
 )
 
 ## estimated penalty strength
@@ -78,7 +78,8 @@ round(mod$lambda, 2)
 ## extracting parameters
 beta = mod$beta # mean parameter matrix
 alpha = mod$alpha # sd parameter matrix
-(Gamma = mod$Gamma) # t.p.m.
+Gamma = mod$Gamma # t.p.m.
+round(Gamma, 3)
 round(c(Gamma[1,2], Gamma[2,1])^-1) # mean dwell time
 (delta = mod$delta) # stationary distribution
 mod$states = viterbi(mod$delta, mod$Gamma, mod$allprobs) # decoding most probable state sequence
