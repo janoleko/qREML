@@ -1,62 +1,33 @@
-penalty = function(re_coef, S, lambda) {
 
-  # convert paramter matrix to list of length 1 if necessary  
-  if(is.matrix(re_coef)) {
-    re_coef = list(re_coef)
-  }
-  
-  n_re = length(re_coef) # number of different random effects (matrices)
-  
-  # convert penalty matrix to list of length n_re if necessary
-  if(is.matrix(S)){
-    S = list(S)
-    S = rep(S, n_re)
-  }
-  
-  # if S is a list of length 1, then repeat it n_re times
-  if(is.list(S) & length(S) == 1){
-    S = rep(S, n_re)
-  }
-  
-  # if lambda is only vector, convert to list of length 1
-  if(!is.list(lambda)){
-    lambda = list(lambda)
-  }
-  
-  RTMB::REPORT(re_coef) # parameter list that is reported
-  RTMB::REPORT(lambda) # lambda is reported
-  RTMB::REPORT(S) # penalty matrix list is reported
-  
-  Pen = list() # penalty list that is reported and used for update in pql
-  pen = 0 # initializing penalty that will be returned
-  
-  # loop over different random effects (matrices)
-  for(i in 1:n_re){
-    re = as.matrix(re_coef[[i]])
-    
-    Pen[[i]] = numeric(nrow(re))
-    
-    # for each, loop over rows and compute penalty
-    for(j in 1:nrow(re)){
-      Pen[[i]][j] = t(re[j,]) %*% S[[i]] %*% re[j,]
-      
-      pen = pen + lambda[[i]][j] * Pen[[i]][j]
-    }
-  }
-  
-  RTMB::REPORT(Pen) # reporting the penalty list for pql update
-  
-  0.5 * pen
+reshape_lambda <- function(num_elements, lambda) {
+  start <- 1
+  result <- lapply(num_elements, function(len) {
+    # Extract sub-vector from lambda based on the number of elements
+    sub_vector <- lambda[start:(start + len - 1)]
+    start <<- start + len
+    return(sub_vector)
+  })
+  return(result)
 }
 
 
-pql = function(pnll, par, dat, random,
-               alpha_sm = 0.98, maxiter = 50, tol = 1e-2, 
-               silent = TRUE, saveall = FALSE) {
+
+pql2 = function(pnll, # penalized negative log-likelihood function
+               par, # initial parameter list
+               dat, # initial dat object, currently needs to be called dat!
+               random, # names of parameters in par that are random effects/ penalized
+               penalty = "lambda", # name given to the penalty parameter in dat
+               alpha = 0, # exponential smoothing parameter
+               maxiter = 100, # maximum number of iterations
+               tol = 1e-4, # tolerance for convergence
+               inner_tol = 1e-8, # tolerance for inner optimization
+               silent = 1, # print level
+               saveall = FALSE) # save all intermediate models?
+{
   
-  # loading RTMB and LaMa if necessary
-  if(!("RTMB" %in% loadedNamespaces())) library(RTMB)
-  if(!("LaMa" %in% loadedNamespaces())) library(LaMa)
+  # setting the argument name for par because later updated par is returned
+  argname_par = as.character(substitute(par))
+  argname_dat = as.character(substitute(dat))
   
   # setting the environment for mllk to be the local environment such that it pull the right lambda
   environment(pnll) = environment() 
@@ -64,31 +35,71 @@ pql = function(pnll, par, dat, random,
   # number of random effects, each one can be a matrix where each row is a random effect, but then they have the same penalty structure
   n_re = length(random) 
   
-  allmods = list() # creating a list to save all model objects
+  # list to save all model objects
+  allmods = list() 
   
-  ## finding the indices of the random effect
-  obj = MakeADFun(pnll, par)
+  # initial lambda locally
+  lambda = dat[[penalty]]
+  
+  # experimentally, changing the name of the data object in pnll to dat
+  if(argname_dat != "dat"){
+    body(pnll) <- parse(text=gsub(argname_dat, "dat", deparse(body(pnll))))
+  }
+  
+  # creating the objective function as wrapper around pnll to pull lambda from local
+  f = function(par){
+    environment(pnll) = environment()
+    
+    "[<-" <- ADoverload("[<-") # overloading assignment operators, currently necessary
+    "c" <- ADoverload("c")
+    "diag<-" <- ADoverload("diag<-")
+    
+    getLambda = function(x) lambda
+    
+    dat[[penalty]] = DataEval(getLambda, rep(advector(1), 0))
+    
+    pnll(par)
+  }
+  
+  # creating the RTMB objective function
+  if(silent %in% 1:2) cat("Creating AD function\n")
+  
+  obj = MakeADFun(func = f, parameters = par, silent = TRUE) # silent and replacing with own prints
+  newpar = obj$par # saving initial paramter value as vector to initialize optimization in loop
+  
+  # own printing of maximum gradient component if silent = 0
+  if(silent == 0){
+    newgrad = function(par){
+      gr = obj$gr(par)
+      cat(" inner mgc:", max(abs(gr)),"\n")
+      gr
+    }
+  } else{
+    newgrad = obj$gr
+  }
+  
+  # prepwork
   mod0 = obj$report() # getting all necessary information from penalty report
-  S = mod0$S # penalty matrix/ matrices
+  S = mod0$S # penalty matrix/ matrices in list format
   
   # finding the indices of the random effects to later index Hessian
   re_inds = list() 
   for(i in 1:n_re){
     re_dim = dim(as.matrix(par[[random[i]]]))
     re_inds[[i]] = matrix(which(names(obj$par) == random[i]), nrow = re_dim[1], ncol = re_dim[2])
-    # for some weird reason the indices are shuffled around by MakeADFun, so not byrow = TRUE
+    if(dim(re_inds[[i]])[2] == 1) re_inds[[i]] = t(re_inds[[i]]) # if only one column, then transpose
   }
   
-  # initializing list of penalty strength parameters with the one contained in dat
+  # get number of similar random effects for each distinct random effect (of same structure)
+  re_lengths = sapply(re_inds, function(x) if (is.vector(x)) 1 else nrow(x))
+  
+  # initialize list of penalty strength parameters
   Lambdas = list()
-  if(!is.list(dat$lambda)) {
-    lambda0 = list(dat$lambda)
-  } else{
-    lambda0 = dat$lambda
-  }
-  Lambdas[[1]] = lambda0
+  Lambdas[[1]] = reshape_lambda(re_lengths, lambda) # reshaping to match structure of random effects
   
-  cat("\nInitializing with lambda0:", round(unlist(Lambdas[[1]]), 4))
+  if(silent < 2){
+    cat("Initializing with", paste0(penalty, ":"), round(lambda, 3), "\n")
+  }
   
   # computing rank deficiency for each penalty matrix to use in correction term
   m = numeric(length(S)) 
@@ -96,150 +107,175 @@ pql = function(pnll, par, dat, random,
     m[i] = nrow(S[[i]]) - Matrix::rankMatrix(S[[i]])
   } 
   
-  ## updating algorithm
-  Start = Sys.time()
-  
-  # loop over outer iterations until maxiter or convergence
+  ### updating algorithm
+  # loop over outer iterations until convergence or maxiter
   for(k in 1:maxiter){
-    cat("\nouter", k)
-    cat("\n inner fit...")
     
-    # creating the objective function
-    obj = MakeADFun(func=pnll, parameters=par, silent=silent)
+    # fitting the model conditional on lambda: current local lambda will be pulled by f
+    opt = stats::optim(newpar, obj$fn, newgrad, 
+                       method = "BFGS", 
+                       control = list(reltol = inner_tol, maxit = 500))
     
-    # fitting the model conditional on lambda
-    opt = stats::nlminb(start=obj$par, objective=obj$fn, gradient=obj$gr)
+    # setting new optimum par for next iteration
+    newpar = opt$par 
     
-    mod = obj$report() # reporting to extract random effects
+    # reporting to extract penalties
+    mod = obj$report() 
     
-    J = obj$he() # saving current Hessian
-    J_inv = MASS::ginv(J) # computing Fisher information
-    mod$Fisher = J_inv # saving fisher information in model object for convenience
-    allmods[[k]] = mod # saving entire model object
+    # evaluating current Hessian
+    J = obj$he()
+    
+    # computing Fisher information matrix
+    J_inv = MASS::ginv(J) 
+    
+    # saving entire model object
+    allmods[[k]] = mod 
     
     ## updating all lambdas
     lambdas_k = list() # temporary lambda list
     
-    # looping over random effects (matrices)
+    # looping over distinct random effects (matrices)
     for(i in 1:n_re){
-      
-      lambdas_k[[i]] = numeric(nrow(re_inds[[i]])) # initializing lambda vector for i-th random effect
+      # initializing lambda vector for i-th random effect
+      lambdas_k[[i]] = numeric(nrow(re_inds[[i]]))
       
       # looping over similar random effects
       for(j in 1:nrow(re_inds[[i]])){
         idx = re_inds[[i]][j,] # indices of this random effect
         
         # effective degrees of freedom for this random effect: J^-1_p J
-        edoF = nrow(S[[i]]) - sum(diag(Lambdas[[k]][[i]][j] * J_inv[idx, idx] %*% S[[i]]))
+        edoF = nrow(S[[i]]) - Lambdas[[k]][[i]][j] * sum(rowSums(J_inv[idx, idx] * S[[i]])) # trace(J^-1 \lambda S)
         
         # calculating new lambda based on updating rule
         lambda_new = as.numeric((edoF - m[i]) / mod$Pen[[i]][j]) # m is correction if S_i does not have full rank
         
-        # potentially smooting new lambda
-        lambdas_k[[i]][j] = alpha_sm * lambda_new + (1-alpha_sm) * Lambdas[[k]][[i]][j]
+        # potentially smoothing new lambda
+        lambdas_k[[i]][j] = (1-alpha) * lambda_new + alpha * Lambdas[[k]][[i]][j]
       }
       
       # minimum of zero for penalty strengths
       lambdas_k[[i]][which(lambdas_k[[i]] < 0)] = 0
-    
     }
+    
+    # assigning new lambda to global list
     Lambdas[[k+1]] = lambdas_k
     
-    if(!is.list(dat$lambda)) {
-      dat$lambda = unlist(Lambdas[[k+1]])
-    } else{
-      dat$lambda = Lambdas[[k+1]]
+    # updating lambda vector locally for next iteration
+    lambda = unlist(lambdas_k) 
+    
+    if(silent < 2){
+      cat("outer", k, "-", paste0(penalty, ":"), round(lambda, 3), "\n")
     }
-    
-    # sdreport to get estimate in list form for good initialization of RE in next iteration
-    sdr = sdreport(obj) 
-    parlist = as.list(sdr, "Estimate")
-    
-    for(i in 1:n_re) {
-      par[[random[i]]] = parlist[[random[i]]]
-    }
-    
-    cat("\n lambda:", round(unlist(Lambdas[[k+1]]), 4))
     
     # convergence check
-    if(max(abs(unlist(Lambdas[[k+1]]) - unlist(Lambdas[[k]])) / unlist(Lambdas[[k]])) < tol){
-      cat("\nConverged\n")
+    if(max(abs(lambda - unlist(Lambdas[[k]])) / unlist(Lambdas[[k]])) < tol){
+      if(silent < 2){
+        cat("Converged\n")
+      }
       break
     }
     
-    if(k == maxiter) cat("\nNo convergence\n")
+    if(k == maxiter) warning("No convergence\n")
   }
-  Sys.time() - Start
   
-  mod$obj = obj
+  # assign RTMB obj to return object
+  mod$obj <- obj
   
+  # if all intermediate models should be returned, assign
   if(saveall) {
     mod$allmods = allmods
   }
   
+  # assign final lambda to return object
+  mod[[penalty]] = lambda
+  
+  # calculating unpenalized log-likelihood at final parameter values
+  lambda = rep(0, length(lambda))
+  dat[[penalty]] = lambda
+  
+  # format parameter to list
+  skeleton = utils::as.relistable(par)
+  parlist = utils::relist(opt$par, skeleton)
+  mod[[argname_par]] = parlist # and assing to return object
+  
+  # assign estimated parameter as vector
+  mod[[paste0(argname_par, "_vec")]] = opt$par
+  
+  # assign log-likelihood at optimum to return object
+  mod$llk = -pnll(parlist)
+  
+  ## calculating effective degrees of freedom for final model
+  mod$edf = list()
+  for(i in 1:n_re){
+    edoF_i = numeric(nrow(re_inds[[i]]))
+    for(j in 1:nrow(re_inds[[i]])){
+      idx = re_inds[[i]][j,]
+      edoF_i[j] = edoF = nrow(S[[i]]) - Lambdas[[k]][[i]][j] * sum(rowSums(J_inv[idx, idx] * S[[i]]))
+    }
+    mod$edf[[i]] = edoF_i
+  }
+  
+  # number of fixed parameters
+  mod$n_fixpar = length(unlist(par[!(names(par) %in% random)]))
+  
+  # assing conditinoal Hessian
+  mod$Hessian_conditional = J
+  
+  # removing penalty list from model object
+  mod = mod[names(mod) != "Pen"] 
+  
+  #############################
+  ### constructing joint object
+  parlist$loglambda = log(mod[[penalty]])
+  
+  # finding the number of similar random effects for each random effect
+  # indvec = rep(1:n_re, times = re_lengths)
+  
+  # computing log determinants
+  logdetS = numeric(length(S))
+  for(i in 1:length(S)){
+    logdetS[i] = determinant(S[[i]])$modulus
+  }
+  
+  ## defining joint negative log-likelihood
+  jnll = function(par) {
+    
+    environment(pnll) = environment()
+    
+    "[<-" <- ADoverload("[<-") # overloading assignment operators, currently necessary
+    "c" <- ADoverload("c")
+    "diag<-" <- ADoverload("diag<-")
+    
+    dat[[penalty]] = exp(par$loglambda)
+    
+    l_p = -pnll(par[names(par) != "loglambda"])
+    
+    ## computing additive constants (missing from only penalized likelihood)
+    const = 0
+    for(i in 1:n_re){
+      for(j in 1:nrow(re_inds[[i]])){
+        k = length(re_inds[[i]][j,])
+        
+        if(i == 1){
+          loglam = par$loglambda[j]
+        } else{
+          loglam = par$loglambda[re_lengths[i-1] + j]
+        }
+        
+        const = const - k * log(2*pi) + k * loglam + logdetS[i]
+      }
+    }
+    
+    l_joint = l_p + 0.5 * const
+    -l_joint
+  }
+  
+  # creating joint AD object
+  obj_joint = MakeADFun(jnll, parlist,
+                        random = names(par)[names(par) != "loglambda"]) # REML, everything random except lambda
+  
+  # assigning object to return object
+  mod$obj_joint = obj_joint
+  
   return(mod)
-}
-
-
-# Regression matrix functions ---------------------------------------------
-
-make_matrices = function(formula, data){
-  gam_setup = gam(formula = update(formula, dummy ~ .),
-                  data = cbind(dummy = 1, data), 
-                  fit = FALSE)
-  Z = gam_setup$X
-  S = gam_setup$S
-  formula = gam_setup$formula
-  return(list(Z = Z, S = S, formula = formula, data = data))
-}
-pred_matrix = function(model_matrices, newdata) {
-  gam_setup0 = gam(model_matrices$form, 
-                   data = cbind(dummy = 1, model_matrices$data))
-  predict(gam_setup0, newdata = cbind(dummy = 1, newdata), type = "lpmatrix")
-}
-
-
-# Density matrix functions ------------------------------------------------
-
-make_matrices_dens = function(x, K, degree = 3, npoints = 1e4, diff_order = 2){
-  ## building the design matrix
-  rangex = range(x, na.rm = TRUE)
-  nObs = length(x)
-  ord = degree + 1
-  nrknots = K - (degree-1) 
-  d = (rangex[2] - rangex[1]) / nrknots
-  bm = c(rangex[1] - degree*d, rangex[2] + degree*d)
-  knots = seq(bm[1], bm[2], length = nrknots + 2*degree)
-  # numerical integration for normalizing the B-spline basis functions
-  xseq =  seq(bm[1], bm[2], length = npoints)
-  B0 = splines::spline.des(knots, xseq, degree+1, outer.ok=T)$design # unnormalized
-  w = rep(NA, K)
-  h = diff(c(knots[1], knots[length(knots)])) / npoints
-  for (k in 1:K){
-    w[k] = (h* sum(B0[,k]))^(-1) 
-    # this computes the integrals of the B-spline basis functions (which are then standardized below)
-  } 
-  # actual data design matrix
-  B = matrix(NA, nrow = nObs, ncol = K)
-  ind = which(!is.na(x))
-  B[ind,] = t(t(splines::spline.des(knots, x[ind], degree+1, outer.ok = TRUE)$design) * w) 
-  
-  # basis positions
-  basis_pos = knots[(degree+1):(length(knots)-degree+1)]
-  
-  ## building the penalty matrix
-  L = diff(diag(K), differences = diff_order) # second-order difference matrix
-  S = t(L[,-1])%*%L[,-1] # leaving out first column
-  cat("Leaving out first column of S, fix first column of parameter matrix at zero!")
-  
-  list(Z=B, S = S, knots=knots, w=w, degree = degree, basis_pos = basis_pos)
-}
-
-pred_matrix_dens = function(model_matrices, x_pred){
-  knots = model_matrices$knots
-  degree = model_matrices$degree
-  w = model_matrices$w
-  
-  B = splines::spline.des(knots, x_pred, degree+1, outer.ok=T)$design
-  sweep(B, 2, w, FUN = "*")
 }

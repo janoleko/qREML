@@ -2,3 +2,8 @@
 .Rhistory
 .RData
 .Ruserdata
+
+# Ignore specific .rds files in the mods directory
+/simulation_experiments/mods/n1000.rds
+/simulation_experiments/mods/n2000.rds
+/simulation_experiments/mods/n5000.rds
