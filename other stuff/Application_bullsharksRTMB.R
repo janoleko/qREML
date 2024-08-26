@@ -6,11 +6,11 @@ library(RTMB)
 ## data
 load("~/Downloads/bull_sharks_workspace_for_plots.RData")
 sharks = x
-IDs = unique(sharks$SharkID)
+IDs = unique(sharks$SharkID) # unique IDs
 
 hist(sharks$log_ODBA, breaks = 100, prob = TRUE)
 
-##
+## color
 color = c("orange", "deepskyblue")
 
 
@@ -120,12 +120,12 @@ data = list(ODBA = sharks$ODBA, IDnum = sharks$IDnum, trackID = sharks$SharkID, 
 
 ## model fitting
 system.time(
-  mod <- pql(pnll, par, data, random = c("betaSpline1", "betaSpline2", "A"),
-             maxiter = 500, silent = 1)
+  mod <- qreml(pnll, par, data, random = c("betaSpline1", "betaSpline2", "A"),
+             maxiter = 500)
 )
 
 
-## extracting parameters
+ü+## extracting parameters
 # state process coefficients
 beta = mod$beta
 # state-dependent means based on smooth for each shark
@@ -190,3 +190,77 @@ for(i in 1:length(temp_seq)){
 legend(x = 18, y = 1, border = NA, pch = 16,
        legend = paste0(round(rev(temp_seq[c(1,3,6,9,12)])),"°"), 
        col = scales::alpha(rev(tempcolor[c(1,3,6,9,12)]), 0.8), bty = "n")
+
+
+
+
+# Adding random intercept -------------------------------------------------
+
+## penalized likelihood function
+pnll2 = function(par){
+  getAll(par, data)
+  
+  ## state process
+  beta = cbind(beta0, betaRI, betaSpline1, betaSpline2)
+  Gamma = tpm_g(Z_s, beta, ad = T)
+  delta = c(1, exp(logitdelta))
+  delta = delta / sum(delta); REPORT(delta)
+  
+  ## state-dependent process (GAM)
+  smooth = rowSums(Z_sd[,-1] * A[IDnum,]) # GAM means for state 1 and each individual (on log scale)
+  Mu = exp(cbind(alpha0[1] + smooth, # mean state 1: intercept + smooth
+                 alpha0[2] + smooth + mu2[IDnum])) # mean state 2: intercept + smooth + individual-specific deviatio
+  Sigma = exp(logSigma)
+  sigma = Sigma[IDnum,]
+  REPORT(Mu); REPORT(Sigma); REPORT(alpha0); REPORT(A); REPORT(mu2)
+  
+  allprobs = matrix(1, nrow = length(ODBA), ncol = N)
+  ind = which(!is.na(ODBA))
+  allprobs[ind,] = cbind(dgamma2(ODBA[ind], Mu[ind,1], sigma[ind,1]),
+                         dgamma2(ODBA[ind], Mu[ind,2], sigma[ind,2]))
+  
+  -forward_g(t(delta), Gamma, allprobs, trackID, ad = T) + 
+    penalty(list(betaRI, betaSpline1, betaSpline2, A), S, lambda)
+}
+
+## prepwork: design and penalty matrices
+sharks$SharkID = as.factor(sharks$SharkID)
+
+k_s = 10
+modmat_s = make_matrices(~ s(SharkID, bs = "re") +
+                           s(Hour, bs = "cp", k = k_s) +
+                           s(Hour, bs = "cp", k = k_s, by = AvgTemp),
+                         data = sharks, knots = list(Hour = c(0, 24)))
+
+Z_s = modmat_s$Z
+S_s = modmat_s$S # 1. SharkID, 2. s(time), 3. AvgTemp * s(time)
+
+k_sd = 15
+modmat_sd = make_matrices(~ s(IDindex, bs = "ps", k = k_sd), data = sharks)
+Z_sd = modmat_sd$Z
+S_sd = modmat_sd$S # 1. s(IDindex)
+
+S = c(S_s, S_sd)
+
+
+## initial parameters and data
+par = list(beta0 = rep(-2, 2),                           # state process intercepts
+           betaRI = matrix(0, 2, length(IDs)),           # random intercepts
+           betaSpline1 = matrix(0, 2, k_s-1),            # state process spline coef s(time)
+           betaSpline2 = matrix(0, 2, k_s),              # state process spline coef AvgTemp * s(time)
+           logitdelta = 0,                               # initial distribution
+           alpha0 = rep(-0.5, 2),                        # intercept state-dependent mean
+           A = matrix(0, length(IDs), k_sd-1),           # state-dep process spline coef for state one but each individual
+           mu2 = rep(0.3, length(IDs)),                  # individual-specific deviations from state 1 mean for state 2 mean
+           logSigma = matrix(log(0.16), length(IDs), 2)) # individual-specific standard deviations
+
+data = list(ODBA = sharks$ODBA, IDnum = sharks$IDnum, trackID = sharks$SharkID, N = 2,
+            Z_s = Z_s, Z_sd = Z_sd, 
+            S = S,
+            lambda = c(rep(100, 2), rep(1e3, 4), rep(1e5, length(IDs))))
+
+## model fitting
+system.time(
+  mod2 <- qreml(pnll2, par, data, random = c("betaRI", "betaSpline1", "betaSpline2", "A"),
+             maxiter = 500, silent = 1, alpha = 0.1)
+)

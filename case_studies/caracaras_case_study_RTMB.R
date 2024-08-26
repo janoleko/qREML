@@ -126,14 +126,14 @@ pnll = function(par) {
   A = A / rowSums(A) # multinomial logit link
   
   ## computing state-dependent distributions
-  allprobs = matrix(1, nrow = nrow(Z), ncol = N)
+  allprobs = matrix(1, nrow(Z), N)
   ind = which(!is.na(x))
   allprobs[ind,] = Z[ind,] %*% t(A) # linear: sum over weighted basis functions
   
   REPORT(A) # report A for convenience later
   
   -forward(delta, Gamma, allprobs, ad = T) + 
-    penalty(beta, S, lambda) # penalty function reports to pql
+    penalty(beta, S, lambda) # penalty function reports to qreml
 }
 
 
@@ -158,9 +158,9 @@ beta = beta - beta[,1] # subtracting first column for smooth transition to fixed
 par = list(eta = rep(-3, N*(N-1)), beta = beta)
 dat = list(x = data$logVDBA, Z = Z, N = 3, S = S, lambda = rep(30, 3))
 
-## model fitting via pql
+## model fitting via qreml
 system.time(
-  mod <- pql(pnll, par, dat, random = "beta")
+  mod <- qreml(pnll, par, dat, random = "beta", silent = 1)
 )
 
 ## estimated penalty strength
@@ -208,21 +208,7 @@ plot(data$logVDBA[plotind], pch = 20, col = alpha(color[mod$states[plotind]], 0.
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Full Laplace with REML --------------------------------------------------
+# Full REML and marginal ML -----------------------------------------------
 
 jnll = function(par) {
   getAll(par, dat)
@@ -235,7 +221,7 @@ jnll = function(par) {
   A = A / rowSums(A) # multinomial logit link
   
   ## computing state-dependent distributions
-  allprobs = matrix(1, nrow = nrow(Z), ncol = N)
+  allprobs = matrix(1, nrow(Z), N)
   ind = which(!is.na(x))
   allprobs[ind,] = Z[ind,] %*% t(A) # linear: sum over weighted basis functions
   
@@ -247,18 +233,19 @@ jnll = function(par) {
     sum(dgmrf2(beta, 0, S, lambda, log = TRUE))
 }
 
-## Good starting values via guessing normal distributions
-N = 3
-beta = log(rbind(dnorm(basis_pos, -5, 1),
-                 dnorm(basis_pos, -4, 1),
-                 dnorm(basis_pos, -2.5, 1)))
-beta = beta - beta[,1] # subtracting first column for smooth transition to fixed zero coefs 
-
 par = list(eta = rep(-3, N*(N-1)), 
            beta = beta, 
-           loglambda = rep(log(15), 3))
+           loglambda = rep(log(30), 3))
 dat = list(x = data$logVDBA, Z = Z, N = 3, S = S)
 
-obj = MakeADFun(jnll, par, random = "beta")
-opt = nlminb(obj$par, obj$fn, obj$gr)
-obj$fn()
+## REML
+obj1 = MakeADFun(jnll, par, random = names(par)[names(par)!="loglambda"])
+system.time(
+  opt1 <- nlminb(obj1$par, obj1$fn, obj1$gr)
+)
+## marginal ML
+obj2 = MakeADFun(jnll, par, random = "beta")
+system.time(
+  opt2 <- nlminb(obj2$par, obj2$fn, obj2$gr)
+)
+

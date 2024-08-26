@@ -15,15 +15,6 @@ library(scales) # for transparent colors
 sf1 = function(x) -2 + sin(3*pi*x) + exp(1.5*x)
 sf2 = function(x) 2 + cos(4*pi*x) - 2*exp(x)
 
-# sim = simHMM(z[1:2000])
-# ord = order(z[1:2000])
-# Gamma = sim$Gamma
-# 
-# par(mfrow = c(1,2))
-# plot(z[1:2000][ord], Gamma[1,2,ord], type = "l", ylim = c(0,1))
-# plot(z[1:2000][ord], Gamma[2,1,ord], type = "l", ylim = c(0,1))
-
-
 # function to simulate data from the inhomogeneous HMM
 simHMM = function(Gamma, delta = rep(0.5,2), mu = c(1,5), sigma = c(1,3)){
   n = dim(Gamma)[3]
@@ -72,8 +63,7 @@ for(t in 1:1e4){
 
 # creating model matrices
 nb = 15 # number of basis functions
-modmat = make_matrices(~s(z, bs = "ps", k = nb), 
-                       data = data.frame(z = z))
+modmat = make_matrices(~s(z, bs = "ps", k = nb), data = data.frame(z = z))
 Zfull = modmat$Z
 S = modmat$S
 
@@ -85,9 +75,9 @@ par = list(mu = c(1,5),
            betaSpline = matrix(0, 2, ncol = nb-1))
 
 
-## three simulation scenarios
+### three simulation scenarios: T = 1000, 2000, 5000
 
-## n = 1000
+## T = 1000
 n = 1000
 Z = Zfull[1:n,]
 dat = list(Z = Z, S = S, lambda = rep(1000, 2))
@@ -100,7 +90,7 @@ for(l in 1:simiter) {
   sim = simHMM(Gamma_sim[,,1:n])
   dat$x = sim$x
   
-  thismod = tryCatch(pql(pnll_sim, par, dat, random = "betaSpline", 
+  thismod = tryCatch(qreml(pnll_sim, par, dat, random = "betaSpline", 
                          silent = 2, maxiter = 100),
                      error = function(e) "An error occurred")
   
@@ -108,14 +98,14 @@ for(l in 1:simiter) {
     cat("Error\n")
     next
   } else{
-    modsSim1000[[l]] = thismod
+    modsSim1000[[l]] = list(beta = thismod$beta, lambda = thismod$lambda, all_lambda = thismod$all_lambda)
   }
 }
-# modsSim1000 = modsSim1000[!sapply(modsSim1000, is.null)]
-# saveRDS(modsSim1000[1:200], "./simulation_experiments/mods/n1000.rds")
+modsSim1000 = modsSim1000[!sapply(modsSim1000, is.null)]
+saveRDS(modsSim1000[1:200], "./simulation_experiments/mods/T1000.rds")
 
 
-# n = 2000
+# T = 2000
 n = 2000
 Z = Zfull[1:n,]
 dat = list(Z = Z, S = S, lambda = rep(1000, 2))
@@ -128,7 +118,7 @@ for(l in 1:simiter) {
   sim = simHMM(Gamma_sim[,,1:n])
   dat$x = sim$x
   
-  thismod = tryCatch(pql(pnll_sim, par, dat, random = "betaSpline", 
+  thismod = tryCatch(qreml(pnll_sim, par, dat, random = "betaSpline", 
                          silent = 2, maxiter = 100),
                      error = function(e) "An error occurred")
   
@@ -136,14 +126,14 @@ for(l in 1:simiter) {
     cat("Error\n")
     next
   } else{
-    modsSim2000[[l]] = thismod
+    modsSim2000[[l]] = list(beta = thismod$beta, lambda = thismod$lambda, all_lambda = thismod$all_lambda)
   }
 }
-# modsSim2000 = modsSim2000[!sapply(modsSim2000, is.null)]
-# saveRDS(modsSim2000[1:200], "./simulation_experiments/mods/n2000.rds")
+modsSim2000 = modsSim2000[!sapply(modsSim2000, is.null)]
+saveRDS(modsSim2000[1:200], "./simulation_experiments/mods/T2000.rds")
 
 
-# n = 5000
+# T = 5000
 n = 5000
 Z = Zfull[1:n,]
 dat = list(Z = Z, S = S, lambda = rep(1000, 2))
@@ -156,7 +146,7 @@ for(l in 1:simiter) {
   sim = simHMM(Gamma_sim[,,1:n])
   dat$x = sim$x
   
-  thismod = tryCatch(pql(pnll_sim, par, dat, random = "betaSpline", 
+  thismod = tryCatch(qreml(pnll_sim, par, dat, random = "betaSpline", 
                          silent = 1, maxiter = 100),
                      error = function(e) "An error occurred")
   
@@ -164,11 +154,11 @@ for(l in 1:simiter) {
     cat("Error\n")
     next
   } else{
-    modsSim5000[[l]] = thismod
+    modsSim5000[[l]] = list(beta = thismod$beta, lambda = thismod$lambda, all_lambda = thismod$all_lambda)
   }
 }
-# modsSim5000 = modsSim5000[!sapply(modsSim5000, is.null)]
-# saveRDS(modsSim5000[1:200], "./simulation_experiments/mods/n5000.rds")
+modsSim5000 = modsSim5000[!sapply(modsSim5000, is.null)]
+saveRDS(modsSim5000[1:200], "./simulation_experiments/mods/T5000.rds")
 
 
 
@@ -185,9 +175,9 @@ for(t in 1:200){
   Gamma_plot[,,t] = G / rowSums(G)
 }
 
-# modsSim1000 = readRDS("./simulation_experiments/mods/n1000.rds")
-# modsSim2000 = readRDS("./simulation_experiments/mods/n2000.rds")
-# modsSim5000 = readRDS("./simulation_experiments/mods/n5000.rds")
+# modsSim1000 = readRDS("./simulation_experiments/mods/T1000.rds")
+# modsSim2000 = readRDS("./simulation_experiments/mods/T2000.rds")
+# modsSim5000 = readRDS("./simulation_experiments/mods/T5000.rds")
 
 allmods = list(modsSim1000, modsSim2000, modsSim5000)
 Ts = c(1000, 2000, 5000)
@@ -215,8 +205,6 @@ for(m in 1:3){
 
 }
 legend(-0.05, 1, legend = c("true function", "estimates"), col = c("black", "orange"), lwd = c(1, 1), bty = "n")
-
-# dev.off()
 
 
 # Trace plots

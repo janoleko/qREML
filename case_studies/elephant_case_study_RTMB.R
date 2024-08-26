@@ -199,7 +199,7 @@ dat = list(step = data$step, angle = data$angle,
            N = 2, Z = Z, S = S, lambda = rep(1e5, 2))
 
 system.time(
-  mod <- pql(pnll, par, dat, random = "betaspline", saveall = T)
+  mod <- qreml(pnll, par, dat, random = "betaspline", saveall = T)
 )
 
 ## extracting parameters
@@ -403,7 +403,7 @@ for(m in plotind){
 
 
 
-# Using full Laplace method -----------------------------------------------
+# Full REML and marginal ML -----------------------------------------------
 
 ## joint likelihood (has complete normal density for random effects)
 jnll = function(par) {
@@ -441,15 +441,22 @@ dat = list(step = data$step, angle = data$angle,
            tod = data$tod, 
            N = 2, Z = Z, S = as(S[[1]], "sparseMatrix"))
 
-# creating objective function
-obj = MakeADFun(jnll, par, random = "betaspline")
-
+## creating objective function
+## full REML
+obj1 = MakeADFun(jnll, par, random = names(par)[names(par)!="loglambda"])
 # model fitting
 system.time(
-  opt <- nlminb(obj$par, obj$fn, obj$gr, control = list(iter.max = 500))
+  opt1 <- nlminb(obj1$par, obj1$fn, obj1$gr, control = list(iter.max = 500))
 )
 
-mod2 = obj$report()
+## marginal ML
+obj2 = MakeADFun(jnll, par, random = "betaspline")
+# model fitting
+system.time(
+  opt2 <- nlminb(obj2$par, obj2$fn, obj2$gr, control = list(iter.max = 500))
+)
+
+mod2 = obj1$report()
 beta2 = mod2$beta
 
 Gamma_plot2 = tpm_g(Z_pred, beta2)

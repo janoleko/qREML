@@ -10,19 +10,17 @@ reshape_lambda <- function(num_elements, lambda) {
   return(result)
 }
 
-
-
-pql2 = function(pnll, # penalized negative log-likelihood function
-               par, # initial parameter list
-               dat, # initial dat object, currently needs to be called dat!
-               random, # names of parameters in par that are random effects/ penalized
-               penalty = "lambda", # name given to the penalty parameter in dat
-               alpha = 0, # exponential smoothing parameter
-               maxiter = 100, # maximum number of iterations
-               tol = 1e-4, # tolerance for convergence
-               inner_tol = 1e-8, # tolerance for inner optimization
-               silent = 1, # print level
-               saveall = FALSE) # save all intermediate models?
+qreml2 = function(pnll, # penalized negative log-likelihood function
+                 par, # initial parameter list
+                 dat, # initial dat object, currently needs to be called dat!
+                 random, # names of parameters in par that are random effects/ penalized
+                 penalty = "lambda", # name given to the penalty parameter in dat
+                 alpha = 0, # exponential smoothing parameter
+                 maxiter = 100, # maximum number of iterations
+                 tol = 1e-5, # tolerance for convergence
+                 inner_tol = 1e-10, # tolerance for inner optimization
+                 silent = 1, # print level
+                 saveall = FALSE) # save all intermediate models?
 {
   
   # setting the argument name for par because later updated par is returned
@@ -62,7 +60,7 @@ pql2 = function(pnll, # penalized negative log-likelihood function
   }
   
   # creating the RTMB objective function
-  if(silent %in% 1:2) cat("Creating AD function\n")
+  if(silent %in% 0:1) cat("Creating AD function\n")
   
   obj = MakeADFun(func = f, parameters = par, silent = TRUE) # silent and replacing with own prints
   newpar = obj$par # saving initial paramter value as vector to initialize optimization in loop
@@ -71,7 +69,7 @@ pql2 = function(pnll, # penalized negative log-likelihood function
   if(silent == 0){
     newgrad = function(par){
       gr = obj$gr(par)
-      cat(" inner mgc:", max(abs(gr)),"\n")
+      cat(" inner mgc:", max(abs(gr)), "\n")
       gr
     }
   } else{
@@ -113,8 +111,8 @@ pql2 = function(pnll, # penalized negative log-likelihood function
     
     # fitting the model conditional on lambda: current local lambda will be pulled by f
     opt = stats::optim(newpar, obj$fn, newgrad, 
-                       method = "BFGS", 
-                       control = list(reltol = inner_tol, maxit = 500))
+                       method = "BFGS", hessian = TRUE, # return hessian in the end
+                       control = list(reltol = inner_tol, maxit = 1000))
     
     # setting new optimum par for next iteration
     newpar = opt$par 
@@ -123,13 +121,16 @@ pql2 = function(pnll, # penalized negative log-likelihood function
     mod = obj$report() 
     
     # evaluating current Hessian
-    J = obj$he()
+    # J = obj$he()
+    J = opt$hessian
     
     # computing Fisher information matrix
     J_inv = MASS::ginv(J) 
     
     # saving entire model object
-    allmods[[k]] = mod 
+    if(saveall){
+      allmods[[k]] = mod 
+    }
     
     ## updating all lambdas
     lambdas_k = list() # temporary lambda list
@@ -168,6 +169,7 @@ pql2 = function(pnll, # penalized negative log-likelihood function
     }
     
     # convergence check
+    # if(all(abs(lambda - unlist(Lambdas[[k]])) / unlist(Lambdas[[k]])) < tol)){
     if(max(abs(lambda - unlist(Lambdas[[k]])) / unlist(Lambdas[[k]])) < tol){
       if(silent < 2){
         cat("Converged\n")
@@ -188,6 +190,9 @@ pql2 = function(pnll, # penalized negative log-likelihood function
   
   # assign final lambda to return object
   mod[[penalty]] = lambda
+  
+  # assigning all lambdas to return object
+  mod[[paste0("all_", penalty)]] = Lambdas
   
   # calculating unpenalized log-likelihood at final parameter values
   lambda = rep(0, length(lambda))

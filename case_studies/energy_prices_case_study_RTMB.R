@@ -5,7 +5,7 @@ library(RTMB) # automatic differentiation
 # install.packages("MSwM")
 library(MSwM) # data
 # devtools::install_github("janoleko/LaMa") # development version
-library(LaMa) # HMM functions and pql
+library(LaMa) # HMM functions and qreml
 # install.packages("scales")
 library(scales) # just for transparency in plotting
 
@@ -41,7 +41,7 @@ pnll = function(par) {
   REPORT(alpha) # reporting for later use
 
   - forward(delta, Gamma, allprobs, ad = T) +
-    penalty(list(betaspline, alphaspline), S, lambda) # penalty does the heavy lifting and reports to pql
+    penalty(list(betaspline, alphaspline), S, lambda) # penalty does the heavy lifting and reports to qreml
 }
 
 ## prepwork: model matrices (uses mgcv under the hood)
@@ -67,7 +67,7 @@ dat = list(price = energy$Price, Z = Z, S = S,
 
 ## model fit
 system.time(
-  mod <- pql(pnll, par, dat, random = c("betaspline", "alphaspline"), 
+  mod <- qreml(pnll, par, dat, random = c("betaspline", "alphaspline"), 
              saveall = TRUE)
 )
 
@@ -145,7 +145,7 @@ for(m in plotind){
 
 
 
-# Using full Laplace method -----------------------------------------------
+# Full REML and marginal ML -----------------------------------------------
 
 ## joint likelihood (has complete normal density for random effects)
 jnll = function(par) {
@@ -167,9 +167,6 @@ jnll = function(par) {
   REPORT(alpha) # reporting for later use
   
   lambda = exp(loglambda)
-  # rellk = 0
-  # for(i in 1:2) rellk = rellk + dgmrf(betaspline[i,], 0, lambda[i]*S, log = T)
-  # for(i in 1:2) rellk = rellk + dgmrf(alphaspline[i,], 0, lambda[2+i]*S, log = T)
   
   - forward(delta, Gamma, allprobs, ad = T) - 
     sum(dgmrf2(rbind(betaspline, alphaspline), 0, S, lambda, log = TRUE))
@@ -192,17 +189,23 @@ par = list(eta = rep(-3, 2),
            betaspline = matrix(0, nrow = 2, ncol = nb-1),
            alpha0 = c(0, 0),
            alphaspline = matrix(0, nrow = 2, ncol = nb-1),
-           loglambda = rep(log(1000), 4))
+           loglambda = rep(log(1e5), 4))
 
 ## data, model matrices and initial penalty strength
 dat = list(price = energy$Price, Z = Z, S = S[[1]])
 
 ## model fitting
-obj2 = MakeADFun(jnll, par, random = c("betaspline", "alphaspline"))
-
+## REML
+obj2 = MakeADFun(jnll, par, random = names(par)[names(par)!="loglambda"])
 system.time(
   opt2 <- nlminb(obj2$par, obj2$fn, obj2$gr) 
 )
+## marginal ML
+obj3 = MakeADFun(jnll, par, random = c("betaspline", "alphaspline"))
+system.time(
+  opt3 <- nlminb(obj3$par, obj3$fn, obj3$gr) 
+)
+
 
 sdr = sdreport(obj2)
 round(exp(as.list(sdr, "Estimate")$loglambda), 2) # estimated lambdas 

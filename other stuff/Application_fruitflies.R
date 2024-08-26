@@ -80,7 +80,7 @@ dat = list(activity = data$activity,
 
 ## model fitting
 system.time(
-  mod <- pql(pnll,                               # passing penalized log-likelihood function
+  mod <- qreml(pnll,                               # passing penalized log-likelihood function
              par,                                # passing initial parameter list
              dat,                                # passing dat list with lambda!
              random = c("betaRI", "betaSpline")) # specifying random effects
@@ -272,7 +272,7 @@ dat = list(activity = data$activity,
 
 ## model fitting
 system.time(
-  mod2 <- pql(pnll2, par, dat,
+  mod2 <- qreml(pnll2, par, dat,
               random = c("logmuRI", "logphiRI", "betaRI", "betaSpline")) # specifying random effects
 )
 
