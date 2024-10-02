@@ -121,11 +121,13 @@ data = list(ODBA = sharks$ODBA, IDnum = sharks$IDnum, trackID = sharks$SharkID, 
 ## model fitting
 system.time(
   mod <- qreml(pnll, par, data, random = c("betaSpline1", "betaSpline2", "A"),
-             maxiter = 500)
+             maxiter = 500, silent = 1)
 )
 
+length(mod$par_vec)
 
-ü+## extracting parameters
+
+## extracting parameters
 # state process coefficients
 beta = mod$beta
 # state-dependent means based on smooth for each shark
@@ -146,6 +148,25 @@ for(j in 1:6){
   lines(Mu[sharkInd, 1], col = color[1], lwd = 2)
   lines(Mu[sharkInd, 2], col = color[2], lwd = 2)
 }
+
+pdf("~/Desktop/Laplace approx plots/bullsharks_state_dep.pdf", width = 8, height = 3.5)
+
+lim = c(2, 1.4, 1.6)
+par(mfrow = c(1,3))
+for(i in 1:3){
+  j = c(1,3,6)[i]
+  sharkInd = which(sharks$IDnum == j)
+  plot(sharks$ODBA[sharkInd], pch = 16, col = scales::alpha(color[mod$states[sharkInd]], 0.2), 
+       xlab = "time", ylab = "ODBA", main = IDs[j], bty = "n", xaxt = "n", ylim = c(0.2, lim[i]))
+  lines(Mu[sharkInd, 1], col = "white", lwd = 4) # white border
+  lines(Mu[sharkInd, 2], col = "white", lwd = 4) # white border
+  lines(Mu[sharkInd, 1], col = color[1], lwd = 2)
+  lines(Mu[sharkInd, 2], col = color[2], lwd = 2)
+  
+  axis(1, at = seq(0, round(max(sharks$IDindex[sharkInd]), -2), by = 600), labels = seq(0, round(max(sharks$IDindex[sharkInd]), -2), by = 600))
+}
+
+dev.off()
 
 # state process
 tod_seq = seq(0, 24, length = 250)
@@ -173,6 +194,8 @@ legend(x = 12, y = 1, border = NA, lwd = 2,
        legend = paste0(round(rev(temp_seq[c(1,3,6,9,12)])),"°"), 
        col = rev(tempcolor[c(1,3,6,9,12)]), bty = "n")
 
+# pdf("~/Desktop/Laplace approx plots/bullsharks_state.pdf", width = 8, height = 5)
+
 # true periodically stationary distribution
 plot(NA, type = "l", xlim = c(0, 24), ylim = c(0,1), xaxt = "n",
      xlab = "time of day",ylab = "foraging probability", bty = "n")
@@ -191,7 +214,7 @@ legend(x = 18, y = 1, border = NA, pch = 16,
        legend = paste0(round(rev(temp_seq[c(1,3,6,9,12)])),"°"), 
        col = scales::alpha(rev(tempcolor[c(1,3,6,9,12)]), 0.8), bty = "n")
 
-
+# dev.off()
 
 
 # Adding random intercept -------------------------------------------------

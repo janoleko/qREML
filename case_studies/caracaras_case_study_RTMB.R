@@ -122,41 +122,38 @@ pnll = function(par) {
   delta = stationary(Gamma) # stationary distribution
   
   ## computing mixture weights
-  A = exp(cbind(rep(0, N), beta)) # first column fixed at zero
-  A = A / rowSums(A) # multinomial logit link
+  alpha = exp(cbind(beta, rep(0, N))) # first column fixed at zero
+  alpha = alpha / rowSums(alpha) # multinomial logit link
+  REPORT(alpha) # report alpha for convenience later
   
   ## computing state-dependent distributions
   allprobs = matrix(1, nrow(Z), N)
   ind = which(!is.na(x))
-  allprobs[ind,] = Z[ind,] %*% t(A) # linear: sum over weighted basis functions
+  allprobs[ind,] = Z[ind,] %*% t(alpha) # linear: sum over weighted basis functions
   
-  REPORT(A) # report A for convenience later
-  
-  -forward(delta, Gamma, allprobs, ad = T) + 
-    penalty(beta, S, lambda) # penalty function reports to qreml
+  -forward(delta, Gamma, allprobs, ad = T) + penalty(beta, S, lambda)
 }
 
 
-## prepwork: model matrices
-modmat = make_matrices_dens(data$logVDBA, 25)
-Z = modmat$Z # design matrix
-S = modmat$S # penalty matrix
-# knots = modmat$knots # knots
-basis_pos = modmat$basis_pos # basis positions for parameter starting values
-
-## prediction matrix for visualizing state-dependent distributions later
-xseq = seq(min(data$logVDBA, na.rm=T), max(data$logVDBA, na.rm=T), length = 300)
-Z_pred = pred_matrix_dens(modmat, xseq)
-
-## starting values
+## prepwork: model matrices and initial coefficients for smooth densities
 N = 3
-beta = log(rbind(dnorm(basis_pos, -5, 1.5),
-                 dnorm(basis_pos, -4, 1.5),
-                 dnorm(basis_pos, -2.5, 1.5)))
-beta = beta - beta[,1] # subtracting first column for smooth transition to fixed zero coefs 
+smoothDens = buildSmoothDens(data["logVDBA"], 
+                             par = list(logVDBA = list(mean = c(-5, -4, -2.5), sd = rep(1.5, 3))),
+                             k = 25)
 
-par = list(eta = rep(-3, N*(N-1)), beta = beta)
-dat = list(x = data$logVDBA, Z = Z, N = 3, S = S, lambda = rep(30, 3))
+Z = smoothDens$Z$logVDBA # design matrix
+S = smoothDens$S$logVDBA # penalty matrix
+Z_pred = smoothDens$Z_predict$logVDBA # prediction design matrix
+xseq = smoothDens$xseq$logVDBA # prediction grid
+beta = smoothDens$coef$logVDBA # initial coefficients for basis functions
+
+par = list(eta = rep(-3, N*(N-1)), 
+           beta = beta)
+dat = list(x = data$logVDBA, 
+           Z = Z, 
+           N = 3, 
+           S = S, 
+           lambda = rep(30, 3))
 
 ## model fitting via qreml
 system.time(
@@ -167,7 +164,7 @@ system.time(
 round(mod$lambda, 2)
 
 ## extracting parameters
-A = mod$A # weight matrix
+alpha = mod$alpha # weight matrix
 delta = mod$delta # stationary distribution
 mod$states = viterbi(mod$delta, mod$Gamma, mod$allprobs) # state decoding
 
@@ -177,33 +174,25 @@ npar = mod$n_fixpar + sum(unlist(mod$edf))
 (mod$BIC = -2*mod$llk + log(nrow(data))*npar)
 
 ## visualizing results
-
 # pdf("./case_studies/figs/caracara_log.pdf", width = 8.5, height = 4)
 
-par(mfrow = c(1,2), mar = c(5,4,3.5,1) + 0.1)
+Dens = Z_pred %*% t(alpha) # state-dependent densities
 
+par(mfrow = c(1,2), mar = c(5,4,3.5,1) + 0.1)
 hist(data$logVDBA, prob = T, breaks = 50, bor = "white",
      main = "", xlab = "log(VeDBA)", ylab = "density")
-
-dens = matrix(NA, nrow = length(xseq), ncol = N)
-for(j in 1:N){
-  dens[,j] = delta[j] * Z_pred %*% A[j,]
-  lines(xseq, dens[,j], col = color[j], lwd = 2)
-}
-lines(xseq, rowSums(dens), col = 1, lty = 2, lwd = 2)
+for(j in 1:N) lines(xseq, delta[j] * Dens[,j], col = color[j], lwd = 2)
+lines(xseq, colSums(t(Dens)*delta), col = 1, lty = 2, lwd = 2)
 
 legend("topright", legend = c("resting", "low activity", "high activity"), 
        col = color, lwd = 2, bty = "n")
-
-
-# plot(data$VDBA[plotind], type = "h", col = color[mod$states[plotind]], 
-#      xlab = "time", ylab = "VeDBA", bty = "n", lwd = 0.3)
 
 plotind = 4000:8000
 plot(data$logVDBA[plotind], pch = 20, col = alpha(color[mod$states[plotind]], 0.3), 
      xlab = "time", ylab = "logVeDBA", bty = "n")
 
 # dev.off()
+
 
 
 

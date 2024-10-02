@@ -114,6 +114,26 @@ segments(x0 = 1:(nrow(energy)-1), x1 = 2:nrow(energy),
 # dev.off()
 
 
+## minimalistic
+
+# pdf("~/Desktop/Laplace approx plots/titlepage.pdf", width = 8, height = 4.5)
+# 
+# par(mfrow = c(1,1), mar = rep(0,4))
+# plot(energy$Oil, energy$Price, pch = 20, bty = "n", col = alpha(color[mod$states], 0.1),
+#      xlab = "", ylab = "", axes = F, ylim = c(2, 17), xlim = c(20.5, 89.5), xaxs = "i")
+# for(j in 1:2) lines(xseq, Mu_plot[,j], col = color[j], lwd = 3)
+# 
+# qseq = qnorm(seq(0.5, 0.95, length = 3))
+# for(i in qseq){
+#   for(j in 1:2){
+#     lines(xseq, Mu_plot[,j] + i*Sigma_plot[,j], col = alpha(color[j], 0.5), lwd = 1, lty = 2)
+#     lines(xseq, Mu_plot[,j] - i*Sigma_plot[,j], col = alpha(color[j], 0.5), lwd = 1, lty = 2)
+#   }
+# }
+# 
+# dev.off()
+
+
 ## plotting the model sequence
 mods = mod$allmods
 length(mods)

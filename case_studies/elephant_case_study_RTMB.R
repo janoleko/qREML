@@ -199,7 +199,7 @@ dat = list(step = data$step, angle = data$angle,
            N = 2, Z = Z, S = S, lambda = rep(1e5, 2))
 
 system.time(
-  mod <- qreml(pnll, par, dat, random = "betaspline", saveall = T)
+  mod <- qreml(pnll, par, dat, random = "betaspline", saveall = T, silent = 1)
 )
 
 ## extracting parameters
@@ -444,6 +444,7 @@ dat = list(step = data$step, angle = data$angle,
 ## creating objective function
 ## full REML
 obj1 = MakeADFun(jnll, par, random = names(par)[names(par)!="loglambda"])
+
 # model fitting
 system.time(
   opt1 <- nlminb(obj1$par, obj1$fn, obj1$gr, control = list(iter.max = 500))

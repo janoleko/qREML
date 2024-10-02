@@ -55,6 +55,10 @@ modmat = make_matrices(~ condition + s(ID, bs = "re", by = condition) +
                        data = data,
                        knots = list(time = c(0,24)))
 
+modmat = make_matrices(~ s(time, ID, bs = "fs"),
+                       data = data,
+                       knots = list(time = c(0,24)))
+
 Z = modmat$Z # design matrix
 S = modmat$S # list of 4 penalty matrices
 S = S[c(1,3)] # only 2 unique ones -> one for RE, one for spline
@@ -81,9 +85,9 @@ dat = list(activity = data$activity,
 ## model fitting
 system.time(
   mod <- qreml(pnll,                               # passing penalized log-likelihood function
-             par,                                # passing initial parameter list
-             dat,                                # passing dat list with lambda!
-             random = c("betaRI", "betaSpline")) # specifying random effects
+               par,                                # passing initial parameter list
+               dat,                                # passing dat list with lambda!
+               random = c("betaRI", "betaSpline")) # specifying random effects
 )
 
 ## extracting parameters
@@ -192,6 +196,87 @@ for(cond in 1:2){
   # mean
   lines(seq(0,24,length=n), Delta_mean[,state,cond], col = "black", lwd = 3)
 }
+
+
+
+# random splines ----------------------------------------------------------
+
+## penalized log-likelihood function
+pnll = function(par){
+  "[<-" <- ADoverload("[<-")
+  getAll(par, dat) # extract everything from lists
+  
+  # state-dependent process parameters (mean and dispersion)
+  mu = exp(logmu)
+  phi = exp(logphi)
+  
+  beta = cbind(beta0, betaRI[1:2,], betaRI[3:4,], 
+               betaSpline[1:2,], betaSpline[3:4,],
+               betaSplineRE[1:2,], betaSplineRE[1:2,])
+  # intercept LD and DD, random intercepts LD and DD, spline coefficients LD and DD
+  # looks a little complicated because interaction with light schedule inflates design matrix
+  
+  Gamma = tpm_g(Z, beta, ad = T)
+  
+  # periodically stationary initial distribution for each fly
+  nAnimals = length(trackInd)
+  Delta = matrix(0, nAnimals, 2)
+  for(a in 1:nAnimals) Delta[a,] = stationary_p(Gamma[,,trackInd[a] + 0:47], t = 1, ad = T)
+  
+  # state-dependent probabilities
+  allprobs = matrix(1, nrow = length(activity), ncol = 2)
+  ind = which(!is.na(activity))
+  size = 1/phi; prob = size/(size + mu) # reparametrization of negbinom
+  allprobs[ind,] = cbind(dnbinom(activity[ind], prob[1], size = size[1]),
+                         dnbinom(activity[ind], prob[2], size = size[2]))
+  
+  # forward algorithm + penalty()                      
+  - forward_g(Delta, Gamma, allprobs, trackID, ad = T) + 
+    penalty(list(betaRI, betaSpline, betaSplineRE), S, lambda)
+}
+
+
+## model prep
+modmat = make_matrices(~ condition + s(ID, bs = "re", by = condition) + 
+                         s(time, bs = "cp", k = nb, by = condition) +
+                         s(time, bs = "cs", k = 5, by = condition),
+                       data = data,
+                       knots = list(time = c(0,24)))
+
+modmat = make_matrices(~ s(time, ID, bs = "fs"),
+                       data = data,
+                       knots = list(time = c(0,24)))
+
+Z = modmat$Z # design matrix
+S = modmat$S # list of 4 penalty matrices
+S = S[c(1,3)] # only 2 unique ones -> one for RE, one for spline
+
+nAnimals = length(unique(data$ID))
+
+# initial parameters
+par = list(logmu = log(c(4, 55)),             # state-dependent mean
+           logphi = log(c(10, 0.5)),          # state-dependent dispersion
+           beta0 = matrix(-2, 2, 2),          # state process intercepts
+           betaRI = matrix(0, 4, nAnimals),   # state process random intercepts
+           betaSpline = matrix(0, 4, (nb-1))) # state process spline coefficients
+
+# data list
+dat = list(activity = data$activity,
+           condition = data$condition,
+           trackID = data$ID,
+           trackInd = calc_trackInd(as.vector(data$ID)),
+           Z = Z, 
+           S = S,
+           lambda = rep(100, 8)) # initial lambda: lenght equals total number of random effects
+
+
+## model fitting
+system.time(
+  mod <- qreml(pnll,                               # passing penalized log-likelihood function
+               par,                                # passing initial parameter list
+               dat,                                # passing dat list with lambda!
+               random = c("betaRI", "betaSpline")) # specifying random effects
+)
 
 
 
@@ -426,6 +511,7 @@ obj = mod$obj
 obj$par = obj$par
 mo = obj$report(obj$par+2)
 mo$beta[,1]
+
 
 
 
