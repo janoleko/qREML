@@ -1,4 +1,4 @@
-
+# helper function for penalty and qreml
 reshape_lambda <- function(num_elements, lambda) {
   start <- 1
   result <- lapply(num_elements, function(len) {
@@ -10,17 +10,92 @@ reshape_lambda <- function(num_elements, lambda) {
   return(result)
 }
 
+penalty2 = function(re_coef, S, lambda, omega = NULL) {
+
+  # Convert re_coef to a list of matrices (even if originally a vector)
+  if (!is.list(re_coef)) {
+    re_coef = list(re_coef)
+  }
+  
+  re_coef = lapply(re_coef, function(x) {
+    if (is.vector(x)) {
+      matrix(x, nrow = 1)  # Convert vectors to 1-row matrices
+    } else {
+      x  # Leave matrices unchanged
+    }
+  })
+  
+  # Get number of distinct random effects (of the same structure)
+  n_re = length(re_coef)
+  
+  # Get the number of similar random effects for each distinct random effect
+  re_lengths = sapply(re_coef, nrow)  # All elements are matrices now
+  
+  if ()
+  
+  
+  
+  
+  # Ensure S is a list of length n_re, replicating it if necessary
+  if (length(S_tp) == 1) {
+    S_tp = rep(S_tp, n_re)
+  }
+
+  RTMB::REPORT(S_tp) # separately report the tensor product penalty matrices
+
+  # Precompute start and end indices for lambda
+  end = cumsum(re_lengths)
+  start = c(1, end[-length(end)] + 1)
+  
+  # Initialize penalty variables
+  Pen_lambda = Pen_omega = vector("list", n_re)
+  pen = 0
+  
+  # Loop over distinct random effects - each now a matrix
+  for (i in 1:n_re) {
+    current_re = re_coef[[i]]  # current_re is always a matrix now
+    
+    thislambda = lambda[start[i]:end[i]]
+    thisomega = omega[start[i]:end[i]]
+    
+    quadform_lambda = quadform_omega = rep(NaN, nrow(current_re))
+    
+    # Loop over similar random effects
+    for(j in 1:nrow(current_re)){
+      S1 = kronecker(S_tp[[i]][[1]], diag(nrow(S_tp[[i]][[2]])))
+      S2 = kronecker(diag(nrow(S_tp[[i]][[1]])), S_tp[[i]][[2]])
+      
+      thisS = thisomega[j] * S1 + (1 - thisomega[j]) * S2
+      
+      k = nrow(thisS)
+      
+      quadform_lambda[j] = crossprod(current_re[j,], thisS[-k, -k] %*% current_re[j,])
+      quadform_omega[j] = thislambda[j] * crossprod(current_re[j,], (S1-S2)[-k,-k] %*% current_re[j,])
+    }
+    
+    Pen_lambda[[i]] = quadform_lambda
+    Pen_omega[[i]] = thislambda[j]
+    
+    pen = pen + sum(lambda[start[i]:end[i]] * quadform_lambda)
+  }
+  
+  RTMB::REPORT(Pen_lambda)
+  RTMB::REPORT(Pen_omega)
+  
+  0.5 * pen
+}
+
 qreml2 = function(pnll, # penalized negative log-likelihood function
-                 par, # initial parameter list
-                 dat, # initial dat object, currently needs to be called dat!
-                 random, # names of parameters in par that are random effects/ penalized
-                 penalty = "lambda", # name given to the penalty parameter in dat
-                 alpha = 0, # exponential smoothing parameter
-                 maxiter = 100, # maximum number of iterations
-                 tol = 1e-5, # tolerance for convergence
-                 inner_tol = 1e-10, # tolerance for inner optimization
-                 silent = 1, # print level
-                 saveall = FALSE) # save all intermediate models?
+                  par, # initial parameter list
+                  dat, # initial dat object, currently needs to be called dat!
+                  random, # names of parameters in par that are random effects/ penalized
+                  psnames = c("lambda", "omega"), # name given to the penalty parameter in dat
+                  alpha = 0, # exponential smoothing parameter
+                  maxiter = 100, # maximum number of iterations
+                  tol = 1e-5, # tolerance for convergence
+                  control = list(reltol = 1e-10, maxit = 1000), # control list for inner optimization
+                  silent = 1, # print level
+                  saveall = FALSE) # save all intermediate models?
 {
   
   # setting the argument name for par because later updated par is returned
@@ -36,8 +111,11 @@ qreml2 = function(pnll, # penalized negative log-likelihood function
   # list to save all model objects
   allmods = list() 
   
-  # initial lambda locally
-  lambda = dat[[penalty]]
+  # initial lambda and potential omega locally
+  psnames_lambda = psnames[1]
+  psnames_omega = psnames[2]
+  lambda = dat[[psnames_lambda]]
+  omega = dat[[psnames_omega]]
   
   # experimentally, changing the name of the data object in pnll to dat
   if(argname_dat != "dat"){
@@ -54,7 +132,7 @@ qreml2 = function(pnll, # penalized negative log-likelihood function
     
     getLambda = function(x) lambda
     
-    dat[[penalty]] = DataEval(getLambda, rep(advector(1), 0))
+    dat[[psnames_lambda]] = DataEval(getLambda, rep(advector(1), 0))
     
     pnll(par)
   }
@@ -63,7 +141,7 @@ qreml2 = function(pnll, # penalized negative log-likelihood function
   if(silent %in% 0:1) cat("Creating AD function\n")
   
   obj = MakeADFun(func = f, parameters = par, silent = TRUE) # silent and replacing with own prints
-  newpar = obj$par # saving initial paramter value as vector to initialize optimization in loop
+  newpar = obj$par # saving initial parameter value as vector to initialize optimization in loop
   
   # own printing of maximum gradient component if silent = 0
   if(silent == 0){
@@ -79,12 +157,18 @@ qreml2 = function(pnll, # penalized negative log-likelihood function
   # prepwork
   mod0 = obj$report() # getting all necessary information from penalty report
   S = mod0$S # penalty matrix/ matrices in list format
+  # S_dims = sapply(S, nrow)
   
   # finding the indices of the random effects to later index Hessian
   re_inds = list() 
   for(i in 1:n_re){
     re_dim = dim(as.matrix(par[[random[i]]]))
-    re_inds[[i]] = matrix(which(names(obj$par) == random[i]), nrow = re_dim[1], ncol = re_dim[2])
+    # if(re_dim[2] == S_dims[i]){
+    #   byrow = FALSE
+    # } else{
+    #   byrow = TRUE
+    # }
+    re_inds[[i]] = matrix(which(names(obj$par) == random[i]), nrow = re_dim[1], ncol = re_dim[2])# , byrow = byrow)
     if(dim(re_inds[[i]])[2] == 1) re_inds[[i]] = t(re_inds[[i]]) # if only one column, then transpose
   }
   
@@ -112,7 +196,8 @@ qreml2 = function(pnll, # penalized negative log-likelihood function
     # fitting the model conditional on lambda: current local lambda will be pulled by f
     opt = stats::optim(newpar, obj$fn, newgrad, 
                        method = "BFGS", hessian = TRUE, # return hessian in the end
-                       control = list(reltol = inner_tol, maxit = 1000))
+                       control = control)
+    
     
     # setting new optimum par for next iteration
     newpar = opt$par 
@@ -124,12 +209,12 @@ qreml2 = function(pnll, # penalized negative log-likelihood function
     # J = obj$he()
     J = opt$hessian
     
-    # computing Fisher information matrix
+    # computing inverse Hessian
     J_inv = MASS::ginv(J) 
     
     # saving entire model object
     if(saveall){
-      allmods[[k]] = mod 
+      allmods[[k]] = mod
     }
     
     ## updating all lambdas
@@ -284,3 +369,4 @@ qreml2 = function(pnll, # penalized negative log-likelihood function
   
   return(mod)
 }
+
