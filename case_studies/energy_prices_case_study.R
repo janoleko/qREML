@@ -39,8 +39,8 @@ pnll = function(par) {
 
   REPORT(beta) # reporting for later use
   REPORT(alpha) # reporting for later use
-
-  - forward(delta, Gamma, allprobs, ad = T) +
+  
+  - forward(delta, Gamma, allprobs) +
     penalty(list(betaspline, alphaspline), S, lambda) # penalty does the heavy lifting and reports to qreml
 }
 
