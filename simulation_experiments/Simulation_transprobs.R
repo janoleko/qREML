@@ -2,7 +2,6 @@
 
 ## packages
 # install.packages("RTMB")
-library(RTMB)
 # devtools::install_github("janoleko/LaMa") # development version
 library(LaMa)
 # install.packages("scales")
@@ -90,15 +89,20 @@ for(l in 1:simiter) {
   sim = simHMM(Gamma_sim[,,1:n])
   dat$x = sim$x
   
+  t1 = Sys.time()
   thismod = tryCatch(qreml(pnll_sim, par, dat, random = "betaSpline", 
                          silent = 2, maxiter = 100),
                      error = function(e) "An error occurred")
+  time = Sys.time() - t1
   
   if(!is.list(thismod)){
     cat("Error\n")
     next
   } else{
-    modsSim1000[[l]] = list(beta = thismod$beta, lambda = thismod$lambda, all_lambda = thismod$all_lambda)
+    modsSim1000[[l]] = list(beta = thismod$beta, 
+                            lambda = thismod$lambda, 
+                            all_lambda = thismod$all_lambda,
+                            time = time)
   }
 }
 modsSim1000 = modsSim1000[!sapply(modsSim1000, is.null)]
@@ -118,15 +122,20 @@ for(l in 1:simiter) {
   sim = simHMM(Gamma_sim[,,1:n])
   dat$x = sim$x
   
+  t1 = Sys.time()
   thismod = tryCatch(qreml(pnll_sim, par, dat, random = "betaSpline", 
                          silent = 2, maxiter = 100),
                      error = function(e) "An error occurred")
+  time = Sys.time() - t1
   
   if(!is.list(thismod)){
     cat("Error\n")
     next
   } else{
-    modsSim2000[[l]] = list(beta = thismod$beta, lambda = thismod$lambda, all_lambda = thismod$all_lambda)
+    modsSim2000[[l]] = list(beta = thismod$beta, 
+                            lambda = thismod$lambda, 
+                            all_lambda = thismod$all_lambda,
+                            time = time)
   }
 }
 modsSim2000 = modsSim2000[!sapply(modsSim2000, is.null)]
@@ -146,19 +155,40 @@ for(l in 1:simiter) {
   sim = simHMM(Gamma_sim[,,1:n])
   dat$x = sim$x
   
+  t1 = Sys.time()
   thismod = tryCatch(qreml(pnll_sim, par, dat, random = "betaSpline", 
                          silent = 1, maxiter = 100),
                      error = function(e) "An error occurred")
+  time = Sys.time() - t1
   
   if(!is.list(thismod)){
     cat("Error\n")
     next
   } else{
-    modsSim5000[[l]] = list(beta = thismod$beta, lambda = thismod$lambda, all_lambda = thismod$all_lambda)
+    modsSim5000[[l]] = list(beta = thismod$beta, 
+                            lambda = thismod$lambda, 
+                            all_lambda = thismod$all_lambda,
+                            time = time)
   }
 }
 modsSim5000 = modsSim5000[!sapply(modsSim5000, is.null)]
 saveRDS(modsSim5000[1:200], "./simulation_experiments/mods/T5000.rds")
+
+
+
+# Estimation time ---------------------------------------------------------
+
+# T = 1000
+round(mean(
+  sapply(1:length(modsSim1000), function(k) modsSim1000[[k]]$time)), 2)
+
+# T = 2000
+round(mean(
+  sapply(1:length(modsSim2000), function(k) modsSim2000[[k]]$time)), 2)
+
+# T = 5000
+round(mean(
+  sapply(1:length(modsSim5000), function(k) modsSim5000[[k]]$time)), 2)
 
 
 
