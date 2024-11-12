@@ -82,31 +82,31 @@ Z = Zfull[1:n,]
 dat = list(Z = Z, S = S, lambda = rep(1000, 2))
 
 # simulation
-modsSim1000 = list()
-for(l in 1:simiter) {
-  cat("Model", l, "\n")
-  
-  sim = simHMM(Gamma_sim[,,1:n])
-  dat$x = sim$x
-  
-  t1 = Sys.time()
-  thismod = tryCatch(qreml(pnll_sim, par, dat, random = "betaSpline", 
-                         silent = 2, maxiter = 100),
-                     error = function(e) "An error occurred")
-  time = Sys.time() - t1
-  
-  if(!is.list(thismod)){
-    cat("Error\n")
-    next
-  } else{
-    modsSim1000[[l]] = list(beta = thismod$beta, 
-                            lambda = thismod$lambda, 
-                            all_lambda = thismod$all_lambda,
-                            time = time)
-  }
-}
-modsSim1000 = modsSim1000[!sapply(modsSim1000, is.null)]
-saveRDS(modsSim1000[1:200], "./simulation_experiments/mods/T1000.rds")
+# modsSim1000 = list()
+# for(l in 1:simiter) {
+#   cat("Model", l, "\n")
+#   
+#   sim = simHMM(Gamma_sim[,,1:n])
+#   dat$x = sim$x
+#   
+#   t1 = Sys.time()
+#   thismod = tryCatch(qreml(pnll_sim, par, dat, random = "betaSpline", 
+#                          silent = 2, maxiter = 100),
+#                      error = function(e) "An error occurred")
+#   time = Sys.time() - t1
+#   
+#   if(!is.list(thismod)){
+#     cat("Error\n")
+#     next
+#   } else{
+#     modsSim1000[[l]] = list(beta = thismod$beta, 
+#                             lambda = thismod$lambda, 
+#                             all_lambda = thismod$all_lambda,
+#                             time = time)
+#   }
+# }
+# modsSim1000 = modsSim1000[!sapply(modsSim1000, is.null)]
+# saveRDS(modsSim1000[1:200], "./simulation_experiments/mods/T1000.rds")
 
 
 # T = 2000
@@ -115,31 +115,31 @@ Z = Zfull[1:n,]
 dat = list(Z = Z, S = S, lambda = rep(1000, 2))
 
 # simulation
-modsSim2000 = list()
-for(l in 1:simiter) {
-  cat("Model", l, "\n")
-  
-  sim = simHMM(Gamma_sim[,,1:n])
-  dat$x = sim$x
-  
-  t1 = Sys.time()
-  thismod = tryCatch(qreml(pnll_sim, par, dat, random = "betaSpline", 
-                         silent = 2, maxiter = 100),
-                     error = function(e) "An error occurred")
-  time = Sys.time() - t1
-  
-  if(!is.list(thismod)){
-    cat("Error\n")
-    next
-  } else{
-    modsSim2000[[l]] = list(beta = thismod$beta, 
-                            lambda = thismod$lambda, 
-                            all_lambda = thismod$all_lambda,
-                            time = time)
-  }
-}
-modsSim2000 = modsSim2000[!sapply(modsSim2000, is.null)]
-saveRDS(modsSim2000[1:200], "./simulation_experiments/mods/T2000.rds")
+# modsSim2000 = list()
+# for(l in 1:simiter) {
+#   cat("Model", l, "\n")
+#   
+#   sim = simHMM(Gamma_sim[,,1:n])
+#   dat$x = sim$x
+#   
+#   t1 = Sys.time()
+#   thismod = tryCatch(qreml(pnll_sim, par, dat, random = "betaSpline", 
+#                          silent = 2, maxiter = 100),
+#                      error = function(e) "An error occurred")
+#   time = Sys.time() - t1
+#   
+#   if(!is.list(thismod)){
+#     cat("Error\n")
+#     next
+#   } else{
+#     modsSim2000[[l]] = list(beta = thismod$beta, 
+#                             lambda = thismod$lambda, 
+#                             all_lambda = thismod$all_lambda,
+#                             time = time)
+#   }
+# }
+# modsSim2000 = modsSim2000[!sapply(modsSim2000, is.null)]
+# saveRDS(modsSim2000[1:200], "./simulation_experiments/mods/T2000.rds")
 
 
 # T = 5000
@@ -148,32 +148,38 @@ Z = Zfull[1:n,]
 dat = list(Z = Z, S = S, lambda = rep(1000, 2))
 
 # simulation
-modsSim5000 = list()
-for(l in 1:simiter) {
-  cat("Model", l, "\n")
-  
-  sim = simHMM(Gamma_sim[,,1:n])
-  dat$x = sim$x
-  
-  t1 = Sys.time()
-  thismod = tryCatch(qreml(pnll_sim, par, dat, random = "betaSpline", 
-                         silent = 1, maxiter = 100),
-                     error = function(e) "An error occurred")
-  time = Sys.time() - t1
-  
-  if(!is.list(thismod)){
-    cat("Error\n")
-    next
-  } else{
-    modsSim5000[[l]] = list(beta = thismod$beta, 
-                            lambda = thismod$lambda, 
-                            all_lambda = thismod$all_lambda,
-                            time = time)
-  }
-}
-modsSim5000 = modsSim5000[!sapply(modsSim5000, is.null)]
-saveRDS(modsSim5000[1:200], "./simulation_experiments/mods/T5000.rds")
+# modsSim5000 = list()
+# for(l in 1:simiter) {
+#   cat("Model", l, "\n")
+#   
+#   sim = simHMM(Gamma_sim[,,1:n])
+#   dat$x = sim$x
+#   
+#   t1 = Sys.time()
+#   thismod = tryCatch(qreml(pnll_sim, par, dat, random = "betaSpline", 
+#                          silent = 1, maxiter = 100),
+#                      error = function(e) "An error occurred")
+#   time = Sys.time() - t1
+#   
+#   if(!is.list(thismod)){
+#     cat("Error\n")
+#     next
+#   } else{
+#     modsSim5000[[l]] = list(beta = thismod$beta, 
+#                             lambda = thismod$lambda, 
+#                             all_lambda = thismod$all_lambda,
+#                             time = time)
+#   }
+# }
+# modsSim5000 = modsSim5000[!sapply(modsSim5000, is.null)]
+# saveRDS(modsSim5000[1:200], "./simulation_experiments/mods/T5000.rds")
 
+
+# Reading in saved models -------------------------------------------------
+
+modsSim1000 = readRDS("./simulation_experiments/mods/T1000.rds")
+modsSim2000 = readRDS("./simulation_experiments/mods/T2000.rds")
+modsSim5000 = readRDS("./simulation_experiments/mods/T5000.rds")
 
 
 # Estimation time ---------------------------------------------------------
@@ -192,7 +198,6 @@ round(mean(
 
 
 
-
 # Visualizing results -----------------------------------------------------
 
 zseq = seq(0, 1, length = 200)
@@ -204,10 +209,6 @@ for(t in 1:200){
   G[!G] = c(exp(sf2(zseq[t])), exp(sf1(zseq[t])))
   Gamma_plot[,,t] = G / rowSums(G)
 }
-
-# modsSim1000 = readRDS("./simulation_experiments/mods/T1000.rds")
-# modsSim2000 = readRDS("./simulation_experiments/mods/T2000.rds")
-# modsSim5000 = readRDS("./simulation_experiments/mods/T5000.rds")
 
 allmods = list(modsSim1000, modsSim2000, modsSim5000)
 Ts = c(1000, 2000, 5000)
