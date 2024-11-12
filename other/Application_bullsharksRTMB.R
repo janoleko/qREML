@@ -1,7 +1,6 @@
 
 ## packages
 library(LaMa)
-library(RTMB)
 
 ## data
 load("~/Downloads/bull_sharks_workspace_for_plots.RData")
@@ -121,7 +120,7 @@ data = list(ODBA = sharks$ODBA, IDnum = sharks$IDnum, trackID = sharks$SharkID, 
 ## model fitting
 system.time(
   mod <- qreml(pnll, par, data, random = c("betaSpline1", "betaSpline2", "A"),
-             maxiter = 500, silent = 1)
+             silent = 1)
 )
 
 length(mod$par_vec)

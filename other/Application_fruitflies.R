@@ -55,9 +55,9 @@ modmat = make_matrices(~ condition + s(ID, bs = "re", by = condition) +
                        data = data,
                        knots = list(time = c(0,24)))
 
-modmat = make_matrices(~ s(time, ID, bs = "fs"),
-                       data = data,
-                       knots = list(time = c(0,24)))
+# modmat = make_matrices(~ s(time, ID, bs = "fs"),
+#                        data = data,
+#                        knots = list(time = c(0,24)))
 
 Z = modmat$Z # design matrix
 S = modmat$S # list of 4 penalty matrices
