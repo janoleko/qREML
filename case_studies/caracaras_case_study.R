@@ -157,7 +157,7 @@ dat = list(x = data$logVDBA,
 
 ## model fitting via qreml
 system.time(
-  mod <- qreml(pnll, par, dat, random = "beta", silent = 1)
+  mod <- qreml(pnll, par, dat, random = "beta")
 )
 
 ## estimated penalty strength
@@ -170,25 +170,9 @@ mod$states = viterbi(mod$delta, mod$Gamma, mod$allprobs) # state decoding
 
 ## AIC and BIC
 npar = mod$n_fixpar + sum(unlist(mod$edf))
-(mod$AIC = -2*mod$llk + 2*npar)
-(mod$BIC = -2*mod$llk + log(nrow(data))*npar)
+(mod$AIC = -2 * mod$llk + 2 * npar)
+(mod$BIC = -2 * mod$llk + log(nrow(data)) * npar)
 
-# J_p = mod$Hessian_conditional
-# par = mod$par
-# dat = list(x = data$logVDBA, 
-#            Z = Z, 
-#            N = 3, 
-#            S = S, 
-#            lambda = mod$lambda)
-# obj = MakeADFun(pnll, par)
-# J_p = obj$he()
-# 
-# 
-# dat$lambda = rep(0, 3)
-# obj = MakeADFun(pnll, par)
-# J = obj$he()
-# 
-# sum(rowSums(solve(J_p) * J))
 
 ## visualizing results
 # pdf("./case_studies/figs/caracara_log.pdf", width = 8.5, height = 4)

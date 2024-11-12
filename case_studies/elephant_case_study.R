@@ -199,7 +199,7 @@ dat = list(step = data$step, angle = data$angle,
            N = 2, Z = Z, S = S, lambda = rep(1e5, 2))
 
 system.time(
-  mod <- qreml(pnll, par, dat, random = "betaspline", saveall = T, silent = 1)
+  mod <- qreml(pnll, par, dat, random = "betaspline", saveall = TRUE)
 )
 
 ## extracting parameters
@@ -244,9 +244,8 @@ for(b in 1:B){
 
 # periodically stationary distribution
 for(t in 1:length(tod_seq)) {
-  if(t %% 10 == 0) {
-    print(paste0(round(100*t/length(tod_seq)), "%") )
-  }
+  if(t %% 10 == 0) print(paste0(round(100*t/length(tod_seq)), "%"))
+  
   t_seq = (tod_seq[t] + (1:12)*2 - 1) %% 24
   Z_cont = pred_matrix(modmat, newdata = data.frame(tod = t_seq))
   
@@ -398,7 +397,7 @@ for(m in plotind){
 
 }
 
-#dev.off()
+# dev.off()
 
 
 
