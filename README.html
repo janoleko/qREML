@@ -355,8 +355,8 @@ display: none;
 <div id="code-for-efficient-smoothness-selection-for-nonparametric-markov-switching-models-via-quasi-restricted-maximum-likelihood" class="section level1">
 <h1>Code for “Efficient smoothness selection for nonparametric
 Markov-switching models via quasi restricted maximum likelihood”</h1>
-<p>This repository contains code to reproduce the case studies and
-simulation experiments of the paper
+<p>This repository contains <code>R</code> code for reproducing the case
+studies and simulation experiments of the paper
 <a href="https://arxiv.org/abs/2411.11498" target="_blank">“Efficient
 smoothness selection for nonparametric Markov-switching models via quasi
 restricted maximum likelihood”</a>.</p>
@@ -366,6 +366,21 @@ smoothness parameter in nonparametric Markov-switching models called
 is implemented in the <code>qreml()</code> function contained in the R
 package
 <a href="https://janoleko.github.io/LaMa/" target="_blank"><code>LaMa</code></a>.</p>
+<p>The structure of the repository is really simple as all
+<code>.R</code> files are self-contained. The folder
+<code>case_studies</code> contains the three case studies from the paper
+and the folder <code>simulation_experiments</code> contains one
+<code>.R</code> file for reproducing the simulation experiments.</p>
+<p>The figures presented in the paper are provided in the subfolders
+<code>figs</code> and all data necessary will either be downloaded
+automatically by running the case study code, or is included in the
+folder <code>data</code> and will be loaded automatically.</p>
+<p>When using
+<a href="https://janoleko.github.io/LaMa/" target="_blank"><code>LaMa</code></a>,
+please cite the package as follows:</p>
+<p>Koslik Jan-Ole (2024). LaMa: Fast Numerical Maximum Likelihood
+Estimation for Latent Markov Models. R package version 2.0.1 <a href="https://CRAN.R-project.org/package=LaMa" class="uri">https://CRAN.R-project.org/package=LaMa</a>.</p>
+<p>Or in <code>R</code> type citation(package = “LaMa”).</p>
 </div>
 
 
